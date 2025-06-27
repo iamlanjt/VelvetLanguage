@@ -1,0 +1,3 @@
+# Velvet Programming Language
+
+**Velvet** is a programming language I am writing in order to learn Rust, and Programming Language Theory more generally. Considering this is being written before the parser is even started, Velvet is going to be an interpreted language. I will try to balance performance with ease of use, but at the end of the day, whatever helps me learn the theory of languages better is what's going to be implemented. Velvet will likely have a V2 which will be compiled, with various fixes of bad implementations (as there are bound to be).
