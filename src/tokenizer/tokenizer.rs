@@ -1,0 +1,139 @@
+use super::token::*;
+
+fn t_peek(characters: &Vec<char>, cur_idx: usize, amount: usize) -> Option<char> {
+    if cur_idx + amount >= characters.len() {
+        None
+    } else {
+        Some(characters[cur_idx + amount])
+    }
+}
+
+// TODO: once done with all basic tokenizations, error on no end path reached & enable whitespace skipping
+pub fn tokenize(input: &str) -> Vec<VelvetToken> {
+    let input_characters: Vec<char> = input.chars().clone().collect();
+    let mut tokenizer_index = 0;
+    let mut first = true;
+    let mut end_tokens: Vec<VelvetToken> = Vec::new();
+
+    while tokenizer_index < input_characters.len() - 1 {
+        if first == false { tokenizer_index = tokenizer_index + 1; }
+        first = false;
+        let mut current_char = input_characters[tokenizer_index];
+
+        if current_char.is_whitespace() {continue}
+
+        // Single char mapping
+        let token_result: Option<VelvetTokenType> = match current_char {
+            '+' => Some(VelvetTokenType::Plus),
+            '-' => {
+                match t_peek(&input_characters, tokenizer_index, 1) {
+                    Some('>') => { tokenizer_index += 1; Some(VelvetTokenType::Arrow) },
+                    _ => Some(VelvetTokenType::Minus)
+                }
+            },
+            '*' => Some(VelvetTokenType::Asterisk),
+            '/' => Some(VelvetTokenType::Slash),
+            '=' => Some(VelvetTokenType::Eq),
+            '(' => Some(VelvetTokenType::LParen),
+            ')' => Some(VelvetTokenType::RParen),
+            ':' => Some(VelvetTokenType::Colon),
+            '{' => Some(VelvetTokenType::LBrace),
+            '}' => Some(VelvetTokenType::RBrace),
+            '!' => Some(VelvetTokenType::Exclaimation),
+            ';' => Some(VelvetTokenType::Semicolon),
+            _   => None
+        };
+        if token_result.is_some() {
+            end_tokens.push(VelvetToken {
+                kind: token_result.expect(""),
+                start_index: tokenizer_index,
+                end_index: tokenizer_index,
+                literal_value: current_char.to_string()
+            });
+            continue;
+        }
+
+        // Multi char processing
+        // Numbers
+        if current_char.is_numeric() {
+            let mut final_number = "".to_owned();
+            let start_index = tokenizer_index;
+            
+            while current_char.is_numeric() {
+                final_number = final_number + &current_char.to_string();
+                if tokenizer_index + 1 >= input_characters.len() {
+                    break
+                }
+                tokenizer_index += 1;
+                current_char = input_characters[tokenizer_index]
+            }
+
+            end_tokens.push(VelvetToken {
+                kind: VelvetTokenType::Number,
+                start_index,
+                end_index: tokenizer_index,
+                literal_value: final_number
+            });
+            continue
+        }
+
+        // Identifiers
+        if current_char.is_alphabetic() {
+            let mut final_ident: String = "".to_owned();
+            let start_index: usize = tokenizer_index;
+
+            while current_char.is_alphanumeric() || current_char == '_' {
+                final_ident = final_ident + &current_char.to_string();
+                if tokenizer_index + 1 >= input_characters.len() {
+                    break
+                }
+                tokenizer_index += 1;
+                current_char = input_characters[tokenizer_index]
+            }
+
+            tokenizer_index -= 1;
+
+            end_tokens.push(VelvetToken {
+                kind: VelvetTokenType::Identifier,
+                start_index,
+                end_index: tokenizer_index,
+                literal_value: final_ident
+            });
+            continue
+        }
+
+        if current_char == '\'' || current_char == '"' {
+            let end_quote_char = current_char;
+            let si = tokenizer_index;
+            let mut end_string = "".to_owned();
+
+            if tokenizer_index + 1 >= input_characters.len() {
+                panic!("Unexpected EOF: Expected string end sequence, got EOF.")
+            }
+            tokenizer_index += 1;
+            current_char = input_characters[tokenizer_index];
+
+            while current_char != end_quote_char {
+                end_string += &current_char.to_string();
+                if tokenizer_index + 1 >= input_characters.len() {
+                    panic!("Unexpected EOF: Expected string end sequence, got EOF.")
+                }
+                tokenizer_index += 1;
+                current_char = input_characters[tokenizer_index];
+            }
+
+            end_tokens.push(VelvetToken {
+                kind: VelvetTokenType::Str,
+                start_index: si,
+                end_index: tokenizer_index,
+                literal_value: end_string
+            });
+            continue
+        }
+
+        // No token consumed, assume bad syntax
+        panic!("Tokenizer Syntax Error: Failed to associate character {} with a token.", current_char);
+    }
+
+    return end_tokens;
+}

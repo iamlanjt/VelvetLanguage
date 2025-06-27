@@ -1,7 +1,7 @@
 use core::fmt;
 
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum VelvetTokenType {
     Plus,
     Minus,
@@ -9,17 +9,39 @@ pub enum VelvetTokenType {
     Slash,
     Identifier,
     Number,
-    Eq
+    Eq,
+    Arrow,
+    LParen,
+    RParen,
+    Colon,
+    LBrace,
+    RBrace,
+    SingleQuote,
+    DoubleQuote,
+    Exclaimation,
+    Semicolon,
+    Str
 }
 
-const VTOK_EQUIV: [&str; 7] = [
+const VTOK_EQUIV: [&str; 18] = [
     "Plus",
     "Minus",
     "Asterisk",
     "Slash",
     "Identifier",
     "Number",
-    "Equals"
+    "Equals",
+    "Arrow",
+    "LParen",
+    "RParen",
+    "Colon",
+    "LBrace",
+    "RBrace",
+    "SingleQuote",
+    "DoubleQuote",
+    "Exclaimation",
+    "Semicolon",
+    "Str"
 ];
 
 impl fmt::Display for VelvetTokenType {
