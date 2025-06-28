@@ -21,12 +21,19 @@ pub enum VelvetTokenType {
     Exclaimation,
     Semicolon,
     Str,
+    EqArrow,
     Keywrd_Bindmutable,
     Keywrd_Bind,
-    Keywrd_As
+    Keywrd_As,
+    Lt,
+    Gt,
+    DoubleEq,
+    Comma,
+    LBracket,
+    RBracket
 }
 
-const VTOK_EQUIV: [&str; 21] = [
+const VTOK_EQUIV: [&str; 28] = [
     "Plus",
     "Minus",
     "Asterisk",
@@ -45,9 +52,16 @@ const VTOK_EQUIV: [&str; 21] = [
     "Exclaimation",
     "Semicolon",
     "Str",
+    "EqArrow",
     "Keywrd:Bindmutable",
     "Keywrd:Bind",
-    "Keywrd:As"
+    "Keywrd:As",
+    "Lt",
+    "Gt",
+    "DoubleEq",
+    "Comma",
+    "LBracket",
+    "RBracket"
 ];
 
 impl fmt::Display for VelvetTokenType {

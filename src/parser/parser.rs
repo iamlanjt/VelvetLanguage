@@ -1,4 +1,4 @@
-use crate::{parser::nodetypes::{BinaryExpr, Node, NumericLiteral, VarDeclaration}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, Comparator, FunctionDefinition, Identifier, ListLiteral, Node, NumericLiteral, ObjectLiteral, VarDeclaration}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
@@ -40,7 +40,7 @@ impl Parser {
     fn expect_token(&mut self, expected_type: VelvetTokenType, message: &str) -> &VelvetToken {
         let tkn = self.eat();
         if tkn.kind != expected_type {
-            panic!("Token expectation failed: expected token type {}, got {}:\n{}", expected_type, tkn.kind, message);
+            panic!("\nParser expected token type \"{}\", got \"{}\"\nExpectation fault message: \n{}\n", expected_type, tkn.kind, message);
         } else {
             tkn
         }
@@ -51,16 +51,160 @@ impl Parser {
 
     pub fn produce_ast(&mut self) -> Vec<Box<Node>> {
         let mut program: Vec<Box<Node>> = Vec::new();
+        loop {
+            if self.at_end() { break }
+            
             program.push(self.parse_stmt());
+        }
 
         program
     }
 
     fn parse_stmt(&mut self) -> Box<Node> {
         match self.current().kind {
+            VelvetTokenType::Keywrd_Bind => self.parse_var_declaration(),
             VelvetTokenType::Keywrd_Bindmutable => self.parse_var_declaration(),
+            VelvetTokenType::Arrow => self.parse_fn_declaration(),
             _ => self.parse_expr()
         }
+    }
+
+    fn parse_fn_declaration(&mut self) -> Box<Node> {
+        self.eat(); // eat `->` token
+
+        let function_name = self.expect_token(VelvetTokenType::Identifier, "Function name expected").literal_value.clone();
+        let args = self.parse_args();
+        let mut parameter_names: Vec<String> = Vec::new();
+        for arg in args {
+            match *arg {
+                Node::Identifier(ref name) => {
+                    parameter_names.push(name.identifier_name.to_string());
+                },
+                _ => {
+                    panic!("Expected identifier for function parameter");
+                }
+            }
+        }
+
+        self.expect_token(VelvetTokenType::EqArrow, "Expected function return type");
+
+        let return_type = self.expect_token(VelvetTokenType::Identifier, "Expected type after eqarrow").literal_value.clone();
+
+        // parse fn body
+        self.expect_token(VelvetTokenType::LBrace, "Expected function body start");
+
+        let mut body: Vec<Box<Node>> = Vec::new();
+
+        while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
+            body.push(self.parse_stmt());
+        }
+
+        self.expect_token(VelvetTokenType::RBrace, "Expected end of body for function");
+        
+        return Box::new(Node::FunctionDefinition(FunctionDefinition {
+            params: parameter_names,
+            name: function_name,
+            body: body,
+            return_type: return_type
+        }))
+    }
+
+    fn parse_args(&mut self) -> Vec<Box<Node>> {
+        self.expect_token(VelvetTokenType::LParen, "Expected args");
+        let args: Vec<Box<Node>> = if self.current().kind == VelvetTokenType::RParen { Vec::new() } else { self.parse_argument_list() };
+
+        self.expect_token(VelvetTokenType::RParen, "Expected args end");
+
+        args
+    }
+
+    fn parse_argument_list(&mut self) -> Vec<Box<Node>> {
+        let mut args: Vec<Box<Node>> = Vec::new();
+        args.push(self.parse_assignment_expr());
+        
+        while self.current().kind == VelvetTokenType::Comma {
+            self.eat();
+            args.push(self.parse_assignment_expr());
+        }
+
+        args
+    }
+
+    fn parse_assignment_expr(&mut self) -> Box<Node> {
+        let left = self.parse_comparator_expr();
+        if (self.current().kind == VelvetTokenType::Eq) {
+            self.eat();
+            let value = self.parse_assignment_expr();
+            return Box::new(Node::AssignmentExpr(AssignmentExpr {
+                left,
+                value
+            }))
+        }
+        left
+    }
+
+    fn parse_comparator_expr(&mut self) -> Box<Node> {
+        if self.at_end() {
+            panic!("Unexpected EOF: comparator operator expected");
+        }
+
+        let is_comparator = match self.peek() {
+            Some(x) => matches!(x.kind, VelvetTokenType::Gt | VelvetTokenType::Lt | VelvetTokenType::DoubleEq),
+            None => false,
+        };
+
+        if !is_comparator {
+            return self.parse_list_expr();
+        }
+
+        let lhs = self.parse_list_expr();
+        let operator = self.eat().literal_value.clone();
+        let rhs = self.parse_list_expr();
+
+        return Box::new(Node::Comparator(Comparator {
+            lhs,
+            rhs,
+            op: operator
+        }))
+    }
+
+    fn parse_list_expr(&mut self) -> Box<Node> {
+        if self.current().kind != VelvetTokenType::LBracket {
+            return self.parse_object_expr();
+        }
+
+        self.eat();
+        let mut props: Vec<Box<Node>> = Vec::new();
+
+        while !self.at_end() && self.current().kind != VelvetTokenType::RBracket {
+            let value = self.parse_expr();
+            if self.current().kind == VelvetTokenType::Comma {
+                self.eat();
+                props.push(value);
+                continue;
+            } else if self.current().kind == VelvetTokenType::RBracket {
+                props.push(value);
+                continue;
+            }
+        }
+        self.eat();
+
+        Box::new(Node::ListLiteral(ListLiteral {
+            props
+        }))
+    }
+
+    fn parse_object_expr(&mut self) -> Box<Node> {
+        if self.current().kind != VelvetTokenType::LBrace {
+            return self.parse_additive_expr();
+        }
+
+        self.eat();
+        self.expect_token(VelvetTokenType::RBrace, "temp debug: expected {} empty object");
+
+        Box::new(Node::ObjectLiteral(ObjectLiteral {
+            props: Vec::new()
+        }))
     }
 
     // bindm my_counter as i32 = 0
@@ -69,7 +213,7 @@ impl Parser {
         let is_mutable = self.eat().kind == VelvetTokenType::Keywrd_Bindmutable;
         let identifier = self.expect_token(VelvetTokenType::Identifier, "Variable name required").literal_value.clone();
 
-        self.expect_token(VelvetTokenType::Keywrd_As, "Explicit typing required");
+        self.expect_token(VelvetTokenType::Keywrd_As, "Explicit typing when defining a var is required. [bind example as bool = true]");
 
         let var_type = self.expect_token(VelvetTokenType::Identifier, "Expected type").literal_value.clone();
 
@@ -147,7 +291,10 @@ impl Parser {
             VelvetTokenType::Number => Box::new(Node::NumericLiteral(NumericLiteral {
                 literal_value: tk.literal_value.clone()
             })),
-            _ => panic!("Parsing for token {} not yet implemented!", tk.kind)
+            VelvetTokenType::Identifier => Box::new(Node::Identifier(Identifier {
+                identifier_name: tk.literal_value.clone()
+            })),
+            _ => panic!("This token sequence has no applicable parsing path yet: {}", tk.kind)
         }
     }
 }

@@ -41,7 +41,15 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             },
             '*' => Some(VelvetTokenType::Asterisk),
             '/' => Some(VelvetTokenType::Slash),
-            '=' => Some(VelvetTokenType::Eq),
+            '=' => {
+                match t_peek(&input_characters, tokenizer_index, 1) {
+                    Some('>') => { tokenizer_index += 1; Some(VelvetTokenType::EqArrow)},
+                    Some('=') => { tokenizer_index += 1; Some(VelvetTokenType::DoubleEq)},
+                    _ => Some(VelvetTokenType::Eq)
+                }
+            },
+            '<' => Some(VelvetTokenType::Lt),
+            '>' => Some(VelvetTokenType::Gt),
             '(' => Some(VelvetTokenType::LParen),
             ')' => Some(VelvetTokenType::RParen),
             ':' => Some(VelvetTokenType::Colon),
@@ -49,6 +57,9 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             '}' => Some(VelvetTokenType::RBrace),
             '!' => Some(VelvetTokenType::Exclaimation),
             ';' => Some(VelvetTokenType::Semicolon),
+            ',' => Some(VelvetTokenType::Comma),
+            '[' => Some(VelvetTokenType::LBracket),
+            ']' => Some(VelvetTokenType::RBracket),
             _   => None
         };
         if token_result.is_some() {
@@ -109,6 +120,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
                     end_index: tokenizer_index,
                     literal_value: final_ident
                 });
+                tokenizer_index += 1;
                 continue
             }
 
