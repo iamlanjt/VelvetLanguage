@@ -1,4 +1,4 @@
-use crate::{parser::nodetypes::{BinaryExpr, Node, NumericLiteral}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{BinaryExpr, Node, NumericLiteral, VarDeclaration}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
@@ -37,6 +37,15 @@ impl Parser {
         current_token
     }
 
+    fn expect_token(&mut self, expected_type: VelvetTokenType, message: &str) -> &VelvetToken {
+        let tkn = self.eat();
+        if tkn.kind != expected_type {
+            panic!("Token expectation failed: expected token type {}, got {}:\n{}", expected_type, tkn.kind, message);
+        } else {
+            tkn
+        }
+    }
+
     // pub fn produce_ast(&mut self)
     // todo: make program type
 
@@ -48,7 +57,32 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Box<Node> {
-        self.parse_expr()
+        match self.current().kind {
+            VelvetTokenType::Keywrd_Bindmutable => self.parse_var_declaration(),
+            _ => self.parse_expr()
+        }
+    }
+
+    // bindm my_counter as i32 = 0
+    // bind my_counter as i32 = 0
+    fn parse_var_declaration(&mut self) -> Box<Node> {
+        let is_mutable = self.eat().kind == VelvetTokenType::Keywrd_Bindmutable;
+        let identifier = self.expect_token(VelvetTokenType::Identifier, "Variable name required").literal_value.clone();
+
+        self.expect_token(VelvetTokenType::Keywrd_As, "Explicit typing required");
+
+        let var_type = self.expect_token(VelvetTokenType::Identifier, "Expected type").literal_value.clone();
+
+        self.expect_token(VelvetTokenType::Eq, "");
+
+        let var_value = self.parse_expr();
+
+        Box::new(Node::VarDeclaration(VarDeclaration {
+            is_mutable,
+            var_identifier: identifier,
+            var_type,
+            var_value
+        }))
     }
 
     fn parse_expr(&mut self) -> Box<Node> {

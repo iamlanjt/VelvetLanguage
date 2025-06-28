@@ -1,3 +1,5 @@
+use std::{collections::HashMap, ops::BitAnd};
+
 use super::token::*;
 
 fn t_peek(characters: &Vec<char>, cur_idx: usize, amount: usize) -> Option<char> {
@@ -14,6 +16,12 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
     let mut tokenizer_index = 0;
     let mut first = true;
     let mut end_tokens: Vec<VelvetToken> = Vec::new();
+
+    let reserved_tokens: HashMap<&'static str, VelvetTokenType> = HashMap::from([
+        ("bind", VelvetTokenType::Keywrd_Bind),
+        ("bindm", VelvetTokenType::Keywrd_Bindmutable),
+        ("as", VelvetTokenType::Keywrd_As)
+    ]);
 
     while tokenizer_index < input_characters.len() - 1 {
         if first == false { tokenizer_index = tokenizer_index + 1; }
@@ -92,6 +100,17 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             }
 
             tokenizer_index -= 1;
+
+            let reserved_check = reserved_tokens.get(final_ident.as_str());
+            if let Some(x) = reserved_check {
+                end_tokens.push(VelvetToken {
+                    kind: x.to_owned(),
+                    start_index,
+                    end_index: tokenizer_index,
+                    literal_value: final_ident
+                });
+                continue
+            }
 
             end_tokens.push(VelvetToken {
                 kind: VelvetTokenType::Identifier,

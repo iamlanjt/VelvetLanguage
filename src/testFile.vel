@@ -1,1 +1,1 @@
-1 + 2 * 3 / 4
+bindm my_counter as i32 = 1 + 2

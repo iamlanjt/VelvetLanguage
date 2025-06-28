@@ -5,7 +5,7 @@ mod tokenizer;
 mod parser;
 
 fn print_node(node: &Box<Node>, depth: usize) {
-    let indent = "  ".repeat(depth); // two spaces per depth level
+    let indent = "    ".repeat(depth); // two spaces per depth level
 
     match node.as_ref() {
         Node::NumericLiteral(n) => {
@@ -17,6 +17,12 @@ fn print_node(node: &Box<Node>, depth: usize) {
             print_node(&b.left, depth + 1);
             println!("{}  right:", indent);
             print_node(&b.right, depth + 1);
+        }
+        Node::VarDeclaration(decl) => {
+            println!("{}{}Binding: {}", indent, if decl.is_mutable { "Mutable" } else {""}, decl.var_type);
+            println!("{}    ident_name: \"{}\"", indent, decl.var_identifier);
+            println!("{}    value     :", indent);
+            print_node(&decl.var_value, depth + 2);
         }
     }
 }
