@@ -4,6 +4,10 @@
 
 Lexical analysis, parsing, and interpretation are all hand-written features, and no intermediary tools are used.
 
+# How to run example
+`cargo run`, assuming you are on the latest version of Rust/Cargo
+Example is located in `./src/testFile.vel` and is hard-coded in the current version.
+
 # The perfect theoretical Velvet example
 ```vel
 // Mutable binding of 0 as an i32 to "my_counter"
