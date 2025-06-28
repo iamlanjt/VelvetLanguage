@@ -8,7 +8,8 @@ pub enum Node {
     ListLiteral(ListLiteral),
     ObjectLiteral(ObjectLiteral),
     FunctionDefinition(FunctionDefinition),
-    Identifier(Identifier)
+    Identifier(Identifier),
+    Return(Return)
 }
 
 #[derive(Debug)]
@@ -42,6 +43,11 @@ pub struct Comparator {
 #[derive(Debug)]
 pub struct Identifier {
     pub identifier_name: String
+}
+
+#[derive(Debug)]
+pub struct Return {
+    pub return_statement: Box<Node>
 }
 
 #[derive(Debug)]

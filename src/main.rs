@@ -11,29 +11,34 @@ fn print_node(node: &Box<Node>, depth: usize) {
 
     match node.as_ref() {
         Node::NumericLiteral(n) => {
-            println!("{}NumericLiteral: {}", indent, n.literal_value);
+            println!("{}->NumericLiteral: {}", indent, n.literal_value);
         }
         Node::BinaryExpr(b) => {
-            println!("{}BinaryExpr: op '{}'", indent, b.op);
+            println!("{}->BinaryExpr: op '{}'", indent, b.op);
             println!("{}  left:", indent);
             print_node(&b.left, depth + 1);
             println!("{}  right:", indent);
             print_node(&b.right, depth + 1);
         }
         Node::VarDeclaration(decl) => {
-            println!("{}{}Binding: {}", indent, if decl.is_mutable { "Mutable" } else {""}, decl.var_type);
+            println!("{}{}->Binding: {}", indent, if decl.is_mutable { "Mutable" } else {""}, decl.var_type);
             println!("{}    ident_name: \"{}\"", indent, decl.var_identifier);
             println!("{}    value:", indent);
             print_node(&decl.var_value, depth + 2);
         }
         Node::FunctionDefinition(f) => {
-            println!("{}function {}()", indent, f.name);
+            println!("{}->function {}()", indent, f.name);
             println!("{}    param count:     {}", indent, f.params.len());
             println!("{}    body node count: {}", indent, f.body.len());
             println!("{}    body expanded:", indent);
             for sub_node in &f.body {
                 print_node(&sub_node, depth + 2);
             }
+        }
+        Node::Return(r) => {
+            println!("{}->return", indent);
+            println!("{}    return stmt expanded:", indent);
+            print_node(&r.return_statement, depth + 2);
         }
         _ => {
             println!("{}Unknown: {:?}", indent, node)

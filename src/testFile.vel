@@ -4,6 +4,8 @@ bind x as i32 = 1
     bind local_var as bool = true
 
     -> function_inside_my_main(abc) => i32 {
-        x + 2
+        bind temp_var as i32 = abc * x + 5
+
+        ; temp_var + 5
     }
 }

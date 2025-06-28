@@ -1,4 +1,4 @@
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, Comparator, FunctionDefinition, Identifier, ListLiteral, Node, NumericLiteral, ObjectLiteral, VarDeclaration}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, Comparator, FunctionDefinition, Identifier, ListLiteral, Node, NumericLiteral, ObjectLiteral, Return, VarDeclaration}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
@@ -65,8 +65,19 @@ impl Parser {
             VelvetTokenType::Keywrd_Bind => self.parse_var_declaration(),
             VelvetTokenType::Keywrd_Bindmutable => self.parse_var_declaration(),
             VelvetTokenType::Arrow => self.parse_fn_declaration(),
+            VelvetTokenType::Semicolon => self.parse_return_statement(),
             _ => self.parse_expr()
         }
+    }
+
+    fn parse_return_statement(&mut self) -> Box<Node> {
+        self.eat(); // eat `;` token
+        if self.at_end() { panic!("Unexpected EOF: expected return statement, got EOF."); };
+
+        let this_statmenet = self.parse_expr();
+        Box::new(Node::Return(Return {
+            return_statement: this_statmenet
+        }))
     }
 
     fn parse_fn_declaration(&mut self) -> Box<Node> {
