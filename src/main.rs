@@ -1,6 +1,6 @@
 use crate::{parser::{nodetypes::Node, parser::Parser}, runtime::{interpreter::Interpreter, source_environment::source_environment::EnvVar}, tokenizer::tokenizer::tokenize};
 use crate::{runtime::source_environment::source_environment::SourceEnv};
-use std::fs;
+use std::{fs, rc::Rc};
 use std::time::Instant;
 
 mod tokenizer;
@@ -86,12 +86,16 @@ fn main() {
 
     let mut interp = Interpreter::new(result);
     let mut this_env = SourceEnv::create_global();
-    let interp_result = interp.evaluate_body(&mut this_env);
+    let interp_result = interp.evaluate_body(Rc::clone(&this_env));
     println!("{:?}", interp_result);
     println!("\n\nDumping environment in debug mode");
-    for var in this_env.variables.iter() {
-        print_env_var(var.0, var.1, 0);
+    let env_ref = this_env.borrow(); // borrow lives long enough
+    let variables: Vec<_> = env_ref.variables.iter().collect();
+
+    for (name, var) in variables {
+        print_env_var(name, var, 0);
     }
+
 
     println!("Program took {:.2?} ({}ms) from Lexing to Evaluation", lexer_start_time.elapsed(), lexer_start_time.elapsed().as_millis());
 }

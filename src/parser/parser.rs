@@ -1,4 +1,4 @@
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, ListLiteral, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, VarDeclaration}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, ListLiteral, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
@@ -148,7 +148,7 @@ impl Parser {
         let mut args: Vec<Box<Node>> = Vec::new();
         args.push(self.parse_assignment_expr());
         
-        while self.current().kind == VelvetTokenType::Comma {
+        while !self.at_end() && self.current().kind == VelvetTokenType::Comma {
             self.eat();
             args.push(self.parse_assignment_expr());
         }
@@ -158,7 +158,7 @@ impl Parser {
 
     fn parse_assignment_expr(&mut self) -> Box<Node> {
         let left = self.parse_comparator_expr();
-        if self.current().kind == VelvetTokenType::Eq {
+        if !self.at_end() && self.current().kind == VelvetTokenType::Eq {
             self.eat();
             let value = self.parse_assignment_expr();
             return Box::new(Node::AssignmentExpr(AssignmentExpr {
@@ -222,6 +222,7 @@ impl Parser {
 
     fn parse_object_expr(&mut self) -> Box<Node> {
         if self.current().kind != VelvetTokenType::LBrace {
+            println!("{:#?}", self.current());
             return self.parse_additive_expr();
         }
 
@@ -256,7 +257,7 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Box<Node> {
-        self.parse_additive_expr()
+        self.parse_assignment_expr()
     }
 
     fn parse_additive_expr(&mut self) -> Box<Node> {
@@ -368,6 +369,24 @@ impl Parser {
         call_expr
     }
 
+    fn parse_while_stmt(&mut self) -> Box<Node> {
+        let loop_condition = self.parse_comparator_expr();
+
+        self.expect_token(VelvetTokenType::Keywrd_Do, "Expected 'do' for while loop");
+        self.expect_token(VelvetTokenType::LBrace, "Expected body of loop");
+
+        let mut body: Vec<Box<Node>> = Vec::new();
+        while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
+            body.push(self.parse_stmt());
+        }
+
+        self.expect_token(VelvetTokenType::RBrace, "Expected closing brace for body of while loop");
+        Box::new(Node::WhileStmt(WhileStmt {
+            condition: loop_condition,
+            body
+        }))
+    }
+
     fn parse_primary_expr(&mut self) -> Box<Node> {
         // lowest level
         let tk = self.eat();
@@ -379,6 +398,9 @@ impl Parser {
             VelvetTokenType::Identifier => Box::new(Node::Identifier(Identifier {
                 identifier_name: tk.literal_value.clone()
             })),
+            VelvetTokenType::Keywrd_While => {
+                self.parse_while_stmt()
+            }
             VelvetTokenType::LParen => {
                 // self.eat();
                 self.parse_expr()

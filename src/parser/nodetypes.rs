@@ -12,7 +12,14 @@ pub enum Node {
     Return(Return),
     CallExpr(CallExpr),
     MemberExpr(MemberExpr),
-    Eof(Eof)
+    Eof(Eof),
+    WhileStmt(WhileStmt),
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileStmt {
+    pub condition: Box<Node>,
+    pub body: Vec<Box<Node>>
 }
 
 #[derive(Debug, Clone)]

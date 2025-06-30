@@ -1,4 +1,7 @@
-bindm x as number = 5
-bind y as number = x * 25
+bind stop_at  as number = 100
+bind increment_by  as number = 1
 
-y + 2
+bindm index as number = 0
+while index < stop_at do {
+    index = index + increment_by
+}

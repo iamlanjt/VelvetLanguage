@@ -20,7 +20,9 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
     let reserved_tokens: HashMap<&'static str, VelvetTokenType> = HashMap::from([
         ("bind", VelvetTokenType::Keywrd_Bind),
         ("bindm", VelvetTokenType::Keywrd_Bindmutable),
-        ("as", VelvetTokenType::Keywrd_As)
+        ("as", VelvetTokenType::Keywrd_As),
+        ("while", VelvetTokenType::Keywrd_While),
+        ("do", VelvetTokenType::Keywrd_Do)
     ]);
 
     while tokenizer_index < input_characters.len() - 1 {

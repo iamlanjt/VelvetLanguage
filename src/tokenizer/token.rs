@@ -32,10 +32,12 @@ pub enum VelvetTokenType {
     LBracket,
     RBracket,
     Dot,
-    EOF
+    EOF,
+    Keywrd_While,
+    Keywrd_Do
 }
 
-const VTOK_EQUIV: [&str; 30] = [
+const VTOK_EQUIV: [&str; 32] = [
     "Plus",
     "Minus",
     "Asterisk",
@@ -65,7 +67,9 @@ const VTOK_EQUIV: [&str; 30] = [
     "LBracket",
     "RBracket",
     "Dot",
-    "EOF"
+    "EOF",
+    "Keywrd:While",
+    "Keywrd:Do"
 ];
 
 impl fmt::Display for VelvetTokenType {
