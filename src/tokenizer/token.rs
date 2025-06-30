@@ -30,10 +30,12 @@ pub enum VelvetTokenType {
     DoubleEq,
     Comma,
     LBracket,
-    RBracket
+    RBracket,
+    Dot,
+    EOF
 }
 
-const VTOK_EQUIV: [&str; 28] = [
+const VTOK_EQUIV: [&str; 30] = [
     "Plus",
     "Minus",
     "Asterisk",
@@ -61,7 +63,9 @@ const VTOK_EQUIV: [&str; 28] = [
     "DoubleEq",
     "Comma",
     "LBracket",
-    "RBracket"
+    "RBracket",
+    "Dot",
+    "EOF"
 ];
 
 impl fmt::Display for VelvetTokenType {
@@ -70,7 +74,7 @@ impl fmt::Display for VelvetTokenType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VelvetToken {
     pub kind: VelvetTokenType,
     pub start_index: usize,

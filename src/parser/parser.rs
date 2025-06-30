@@ -1,8 +1,9 @@
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, Comparator, FunctionDefinition, Identifier, ListLiteral, Node, NumericLiteral, ObjectLiteral, Return, VarDeclaration}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, ListLiteral, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, VarDeclaration}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
-    token_pointer: usize
+    token_pointer: usize,
+    tkn_chain: Vec<VelvetToken>
 }
 
 impl Parser {
@@ -10,7 +11,8 @@ impl Parser {
         let tokenized_result = tokenize(input);
         Self {
             tokens: tokenized_result,
-            token_pointer: 0
+            token_pointer: 0,
+            tkn_chain: Vec::new()
         }
     }
 
@@ -31,28 +33,41 @@ impl Parser {
         }
     }
 
-    fn eat(&mut self) -> &VelvetToken {
-        let current_token = &self.tokens[self.token_pointer];
+    fn eat(&mut self) -> VelvetToken {
+        let current_token = self.tokens[self.token_pointer].clone();
+        self.tkn_chain.push(self.tokens[self.token_pointer].clone());
         self.token_pointer += 1;
+
         current_token
     }
 
-    fn expect_token(&mut self, expected_type: VelvetTokenType, message: &str) -> &VelvetToken {
-        let tkn = self.eat();
-        if tkn.kind != expected_type {
-            panic!("\nParser expected token type \"{}\", got \"{}\"\nExpectation fault message: \n{}\n", expected_type, tkn.kind, message);
-        } else {
-            tkn
+    fn error(&mut self, faulty_token: &VelvetToken, msg: &str) {
+        let mut reconstructed_consumed_tokens = "".to_owned();
+        for consumed_token in &self.tkn_chain {
+            reconstructed_consumed_tokens = reconstructed_consumed_tokens + " " + &consumed_token.literal_value
         }
+        let length = &reconstructed_consumed_tokens.len() - 1;
+        let indicator = " ".repeat(
+            ("Token chain reconstruction:   ").len()
+        ) + &"-".repeat(length-2) + &format!(" ^ FAULT {} @ idx{}", faulty_token.kind, faulty_token.start_index);
+        panic!("\nParser error:  {}\nToken chain reconstruction:  {}\n{indicator}", msg, reconstructed_consumed_tokens);
     }
 
-    // pub fn produce_ast(&mut self)
-    // todo: make program type
+    fn expect_token(&mut self, expected_type: VelvetTokenType, message: &str) -> VelvetToken {
+        let tkn = self.eat();
+        if tkn.kind != expected_type {
+            self.error(&tkn, &format!("\nParser expected token type \"{}\", got \"{}\"\nExpectation fault message: \n{}\n", expected_type, tkn.kind, message));
+            // panic!();
+        }
+        tkn
+    }
 
     pub fn produce_ast(&mut self) -> Vec<Box<Node>> {
         let mut program: Vec<Box<Node>> = Vec::new();
         loop {
             if self.at_end() { break }
+
+            self.tkn_chain.clear();
             
             program.push(self.parse_stmt());
         }
@@ -143,7 +158,7 @@ impl Parser {
 
     fn parse_assignment_expr(&mut self) -> Box<Node> {
         let left = self.parse_comparator_expr();
-        if (self.current().kind == VelvetTokenType::Eq) {
+        if self.current().kind == VelvetTokenType::Eq {
             self.eat();
             let value = self.parse_assignment_expr();
             return Box::new(Node::AssignmentExpr(AssignmentExpr {
@@ -270,7 +285,7 @@ impl Parser {
     }
 
     fn parse_multiplicative_expr(&mut self) -> Box<Node> {
-        let mut left = self.parse_primary_expr();
+        let mut left = self.parse_call_member_expr();
 
         loop {
             if self.at_end() {
@@ -294,6 +309,65 @@ impl Parser {
         left
     }
 
+    fn parse_call_member_expr(&mut self) -> Box<Node> {
+        let member = self.parse_member_expr();
+
+        if !self.at_end() && self.current().kind == VelvetTokenType::LParen {
+            return self.parse_call_expr(member);
+        }
+
+        return member;
+    }
+
+    fn parse_member_expr(&mut self) -> Box<Node> {
+        let mut object = self.parse_primary_expr();
+
+        while !self.at_end() && (self.current().kind == VelvetTokenType::Dot || self.current().kind == VelvetTokenType::LBracket) {
+            let op = self.eat();
+
+            if op.kind == VelvetTokenType::Dot {
+                let property = self.parse_primary_expr();
+
+                match property.as_ref() {
+                    Node::Identifier(ident) => {
+                        return Box::new(Node::MemberExpr(MemberExpr {
+                            object,
+                            property,
+                            is_computed: true
+                        }));
+                    }
+                    _ => {
+                        panic!("Right-hand of '{}' must be an Identifier, found '{:#?}'", op.literal_value, property);
+                    }
+                }
+            } else {
+                let property = self.parse_expr();
+
+                self.expect_token(VelvetTokenType::RParen, "Expected closing parenthesis");
+
+                return Box::new(Node::MemberExpr(MemberExpr {
+                    object,
+                    property,
+                    is_computed: false
+                }));
+            }
+        }
+        object
+    }
+
+    fn parse_call_expr(&mut self, caller: Box<Node>) -> Box<Node> {
+        let mut call_expr = Box::new(Node::CallExpr(CallExpr {
+            args: self.parse_args(),
+            caller
+        }));
+
+        if !self.at_end() && self.current().kind == VelvetTokenType::LParen {
+            call_expr = self.parse_call_expr(call_expr);
+        }
+
+        call_expr
+    }
+
     fn parse_primary_expr(&mut self) -> Box<Node> {
         // lowest level
         let tk = self.eat();
@@ -305,6 +379,10 @@ impl Parser {
             VelvetTokenType::Identifier => Box::new(Node::Identifier(Identifier {
                 identifier_name: tk.literal_value.clone()
             })),
+            VelvetTokenType::LParen => {
+                // self.eat();
+                self.parse_expr()
+            }
             _ => panic!("This token sequence has no applicable parsing path yet: {}", tk.kind)
         }
     }

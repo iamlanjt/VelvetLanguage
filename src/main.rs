@@ -1,8 +1,11 @@
-use crate::{parser::{nodetypes::Node, parser::Parser}, tokenizer::tokenizer::tokenize};
+use crate::{parser::{nodetypes::Node, parser::Parser}, runtime::{interpreter::Interpreter, source_environment::source_environment::EnvVar}, tokenizer::tokenizer::tokenize};
+use crate::{runtime::source_environment::source_environment::SourceEnv};
 use std::fs;
+use std::time::Instant;
 
 mod tokenizer;
 mod parser;
+mod runtime;
 
 // this function is cringe and will be removed in the event this language is released
 // consider it debug, and in place for actual Display fmt implementations
@@ -46,22 +49,49 @@ fn print_node(node: &Box<Node>, depth: usize) {
     }
 }
 
+fn print_env_var(name: &String, var: &EnvVar, depth: usize) {
+    let indent = "    ".repeat(depth);
+
+    println!("{} as {}{}  =  {:#?}", name, if var.is_mutable { "mutable " } else { "" }, var.var_type, var.value)
+}
+
 fn main() {
     let contents = fs::read_to_string("./src/testFile.vel")
         .expect("Should have been able to read the file");
+
+    println!("[Program Step 1] Starting Lexer");
+    let lexer_start_time = Instant::now();
     let tokenizer_result = tokenize(&contents);
+    println!("[Program Step 1] Lexical analysis finished in {:.2?}\n", lexer_start_time.elapsed());
     
     for this_token in &tokenizer_result {
         let label = format!("Token {}", this_token.kind);
         println!("{:width$} {}", label, this_token.literal_value, width = 25);
     }
 
-    println!("\nStarting parser\nToken bucket size: {} Token(s)\n", tokenizer_result.len());
+    println!("\n[Program Step 2] Starting Parser\n    * token bucket size: {} Token(s)", tokenizer_result.len());
 
+    let parser_start_time = Instant::now();
     let mut parser = Parser::new(&contents);
-
     let result = parser.produce_ast();
-    for node in result {
+    
+    println!("[Program Step 2] AST Generation finished in {:.2?}\n", parser_start_time.elapsed());
+
+    for node in &result {
         print_node(&node, 0);
     }
+
+    println!("\n[Program Step 3] Starting interpreter for AST evaluation\n    * using default initial global environment");
+    println!("    * interpreter is running in early-version mode; the last expression evaluation will be printed to stdout");
+
+    let mut interp = Interpreter::new(result);
+    let mut this_env = SourceEnv::create_global();
+    let interp_result = interp.evaluate_body(&mut this_env);
+    println!("{:?}", interp_result);
+    println!("\n\nDumping environment in debug mode");
+    for var in this_env.variables.iter() {
+        print_env_var(var.0, var.1, 0);
+    }
+
+    println!("Program took {:.2?} ({}ms) from Lexing to Evaluation", lexer_start_time.elapsed(), lexer_start_time.elapsed().as_millis());
 }

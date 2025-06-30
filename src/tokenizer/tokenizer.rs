@@ -31,11 +31,12 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
         if current_char.is_whitespace() {continue}
 
         // Single char mapping
+        let mut prefix_literal_value = "".to_owned();
         let token_result: Option<VelvetTokenType> = match current_char {
             '+' => Some(VelvetTokenType::Plus),
             '-' => {
                 match t_peek(&input_characters, tokenizer_index, 1) {
-                    Some('>') => { tokenizer_index += 1; Some(VelvetTokenType::Arrow) },
+                    Some('>') => { tokenizer_index += 1; prefix_literal_value = "-".to_owned(); Some(VelvetTokenType::Arrow) },
                     _ => Some(VelvetTokenType::Minus)
                 }
             },
@@ -43,8 +44,8 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             '/' => Some(VelvetTokenType::Slash),
             '=' => {
                 match t_peek(&input_characters, tokenizer_index, 1) {
-                    Some('>') => { tokenizer_index += 1; Some(VelvetTokenType::EqArrow)},
-                    Some('=') => { tokenizer_index += 1; Some(VelvetTokenType::DoubleEq)},
+                    Some('>') => { tokenizer_index += 1; prefix_literal_value = "=".to_owned(); Some(VelvetTokenType::EqArrow)},
+                    Some('=') => { tokenizer_index += 1; prefix_literal_value = "=".to_owned();Some(VelvetTokenType::DoubleEq)},
                     _ => Some(VelvetTokenType::Eq)
                 }
             },
@@ -60,6 +61,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             ',' => Some(VelvetTokenType::Comma),
             '[' => Some(VelvetTokenType::LBracket),
             ']' => Some(VelvetTokenType::RBracket),
+            '.' => Some(VelvetTokenType::Dot),
             _   => None
         };
         if token_result.is_some() {
@@ -67,7 +69,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
                 kind: token_result.expect(""),
                 start_index: tokenizer_index,
                 end_index: tokenizer_index,
-                literal_value: current_char.to_string()
+                literal_value: prefix_literal_value + &input_characters[tokenizer_index].to_string()
             });
             continue;
         }
@@ -87,6 +89,8 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
                 current_char = input_characters[tokenizer_index]
             }
 
+            //tokenizer_index -= 1;
+
             end_tokens.push(VelvetToken {
                 kind: VelvetTokenType::Number,
                 start_index,
@@ -104,6 +108,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             while current_char.is_alphanumeric() || current_char == '_' {
                 final_ident = final_ident + &current_char.to_string();
                 if tokenizer_index + 1 >= input_characters.len() {
+                    tokenizer_index += 1;
                     break
                 }
                 tokenizer_index += 1;
