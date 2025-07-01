@@ -86,7 +86,9 @@ fn main() {
 
     let mut interp = Interpreter::new(result);
     let mut this_env = SourceEnv::create_global();
+    println!("\nBelow this line is any stdout from evaluation\n----");
     let interp_result = interp.evaluate_body(Rc::clone(&this_env));
+    println!("\n----\nAbove this line is any stdout from evaluation\n");
     println!("\n** EVALUATION RESULTS **\n  {:?}", interp_result);
     println!("\n\nDumping environment in debug mode");
     let env_ref = this_env.borrow(); // borrow lives long enough

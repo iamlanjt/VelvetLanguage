@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::runtime::values::{RuntimeVal, StringVal};
+use crate::runtime::values::{InternalFunctionVal, NullVal, RuntimeVal, StringVal};
 
 #[derive(Debug, Clone)]
 pub struct EnvVar {
@@ -30,6 +30,19 @@ impl SourceEnv {
                     value: env!("CARGO_PKG_VERSION").to_string()
                 }),
                 var_type: "string".to_string(),
+                is_mutable: false
+            }),
+            ("print".to_string(), EnvVar {
+                value: RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                    fn_name: "print".to_string(),
+                    internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                        for arg in &args {
+                            print!("{}", arg.to_string());
+                        }
+                        RuntimeVal::NullVal(NullVal {})
+                    })
+                }),
+                var_type: String::from("internal_fn"),
                 is_mutable: false
             })
         ]);

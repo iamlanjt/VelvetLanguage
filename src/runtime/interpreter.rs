@@ -105,6 +105,14 @@ impl Interpreter {
                 }
                 last_result
             }
+            RuntimeVal::InternalFunctionVal(r#fn) => {
+                let mut new_args: Vec<RuntimeVal> = Vec::new();
+                for arg in &cexpr.args {
+                    new_args.push(*self.evaluate(Box::new(*arg.clone()), Rc::clone(&env)));
+                }
+                let internal_result = (r#fn.internal_callback)(new_args);
+                return Box::new(internal_result);
+            }
             _ => {
                 panic!("Cannot call type \"{:#?}\"", caller)
             }
@@ -161,7 +169,8 @@ impl Interpreter {
             RuntimeVal::BoolVal(b) => b.value == true,
             RuntimeVal::StringVal(s) => true,
             RuntimeVal::FunctionVal(f) => true, // because why tf not
-            RuntimeVal::ReturnVal(rt) => true
+            RuntimeVal::ReturnVal(rt) => true,
+            RuntimeVal::InternalFunctionVal(rt) => true, // because why tf not x2??
         }
     }
 

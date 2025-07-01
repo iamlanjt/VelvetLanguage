@@ -1,9 +1,1 @@
-bindm was_outer_scope_var_effected as number = 0
--> add(one, two) => number {
-    was_outer_scope_var_effected = 1
-    ; one + two
-}
-
-bind i_could_totally_make_a_bootstrapper_with_this__addition_result as number = add(8, 7)
-i_could_totally_make_a_bootstrapper_with_this__addition_result
-was_outer_scope_var_effected
+print(1)
