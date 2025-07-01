@@ -1,4 +1,4 @@
-use std::{fmt, rc::Rc};
+use std::{collections::HashMap, fmt, rc::Rc};
 
 use crate::parser::nodetypes::Node;
 
@@ -10,7 +10,10 @@ pub enum RuntimeVal {
     InternalFunctionVal(InternalFunctionVal),
     BoolVal(BoolVal),
     StringVal(StringVal),
-    ReturnVal(ReturnVal)
+    ReturnVal(ReturnVal),
+    IteratorVal(IteratorVal),
+    ListVal(ListVal),
+    ObjectVal(ObjectVal)
 }
 
 impl RuntimeVal {
@@ -46,7 +49,7 @@ impl RuntimeVal {
 
 #[derive(Debug, Clone)]
 pub struct NumberVal {
-    pub value: usize
+    pub value: i32
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +68,12 @@ pub struct FunctionVal {
     pub fn_name: String,
     pub execution_body: Rc<Vec<Box<Node>>>,
     pub is_internal: bool
+}
+
+#[derive(Debug, Clone)]
+pub struct IteratorVal {
+    pub to_name: String,
+    pub target: Box<RuntimeVal>
 }
 
 #[derive(Clone)]
@@ -89,16 +98,52 @@ pub struct ReturnVal {
     pub value: Box<Node>
 }
 
-impl fmt::Display for RuntimeVal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+#[derive(Debug, Clone)]
+pub struct ListVal {
+    pub values: Vec<RuntimeVal>
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjectVal {
+    pub values: HashMap<String, RuntimeVal>
+}
+
+impl RuntimeVal {
+    fn fmt_with_indent(&self, f: &mut fmt::Formatter<'_>, depth: usize) -> fmt::Result {
+        let indent = "    ".repeat(depth); // 4 spaces per indent level
+
         match self {
             RuntimeVal::NumberVal(n) => write!(f, "{}", n.value),
             RuntimeVal::StringVal(s) => write!(f, "{}", s.value),
             RuntimeVal::BoolVal(b) => write!(f, "{}", b.value),
-            RuntimeVal::NullVal(n) => write!(f, "null"),
+            RuntimeVal::NullVal(_) => write!(f, "null"),
             RuntimeVal::FunctionVal(func) => write!(f, "<function {}>", func.fn_name),
             RuntimeVal::InternalFunctionVal(func) => write!(f, "<internal fn {}>", func.fn_name),
-            RuntimeVal::ReturnVal(r) => write!(f, "returned")
+            RuntimeVal::ReturnVal(_) => write!(f, "return"),
+            RuntimeVal::IteratorVal(_) => write!(f, "iterator"),
+            RuntimeVal::ListVal(lv) => {
+                write!(f, "[")?;
+                for (i, val) in lv.values.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    val.fmt_with_indent(f, depth)?;
+                }
+                write!(f, "]")
+            }
+            RuntimeVal::ObjectVal(ov) => {
+                write!(f, "{{\n")?;
+                for (i, (key, val)) in ov.values.iter().enumerate() {
+                    if i > 0 { write!(f, ",\n")?; }
+                    write!(f, "{}{}: ", indent.clone() + "    ", key)?;
+                    val.fmt_with_indent(f, depth + 1)?;
+                }
+                write!(f, "\n{}}}", indent)
+            }
         }
+    }
+}
+
+impl fmt::Display for RuntimeVal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_with_indent(f, 0)
     }
 }

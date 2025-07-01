@@ -1,6 +1,6 @@
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, ListLiteral, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
@@ -189,6 +189,7 @@ impl Parser {
 
         let lhs = self.parse_list_expr();
         let operator = self.eat().literal_value.clone();
+        
         let rhs = self.parse_list_expr();
 
         return Box::new(Node::Comparator(Comparator {
@@ -230,10 +231,27 @@ impl Parser {
         }
 
         self.eat();
-        self.expect_token(VelvetTokenType::RBrace, "temp debug: expected {} empty object");
+        // self.expect_token(VelvetTokenType::RBrace, "temp debug: expected {} empty object");
+
+        let mut props: HashMap<String, Box<Node>> = HashMap::new();
+        while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
+            let field_name = self.expect_token(VelvetTokenType::Identifier, "Expected identifier for field name");
+            self.expect_token(VelvetTokenType::Colon, "Expected :");
+            let right = self.parse_expr();
+            match field_name.kind {
+                VelvetTokenType::Identifier => {
+                    props.insert(field_name.literal_value, right);
+                }
+                _ => { panic!(""); }
+            }
+            if !self.at_end() && self.current().kind == VelvetTokenType::Comma {
+                self.eat();
+            }
+        }
+        self.expect_token(VelvetTokenType::RBrace, "Expected end of object");
 
         Box::new(Node::ObjectLiteral(ObjectLiteral {
-            props: Vec::new()
+            props
         }))
     }
 
@@ -407,6 +425,26 @@ impl Parser {
         }))
     }
 
+    fn parse_for_loop(&mut self) -> Box<Node> {
+        let left = self.expect_token(VelvetTokenType::Identifier, "Expected identifier for loop");
+        self.expect_token(VelvetTokenType::Keywrd_Of, "Expected of");
+        let right = self.parse_expr();
+        self.expect_token(VelvetTokenType::Keywrd_Do, "Expected do");
+        self.expect_token(VelvetTokenType::LBrace, "Expected for loop body");
+
+        let mut body: Vec<Box<Node>> = Vec::new();
+        while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
+            body.push(self.parse_stmt());
+        }
+
+        self.expect_token(VelvetTokenType::RBrace, "Expected closing brace for body of for loop");
+        Box::new(Node::Iterator(Iterator {
+            left,
+            right,
+            body
+        }))
+    }
+
     fn parse_primary_expr(&mut self) -> Box<Node> {
         // lowest level
         let tk = self.eat();
@@ -430,6 +468,9 @@ impl Parser {
             }
             VelvetTokenType::Keywrd_If => {
                 self.parse_if_statement()
+            }
+            VelvetTokenType::Keywrd_For => {
+                self.parse_for_loop()
             }
             _ => panic!("This token sequence has no applicable parsing path yet: {}", tk.kind)
         }

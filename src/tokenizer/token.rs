@@ -35,10 +35,12 @@ pub enum VelvetTokenType {
     EOF,
     Keywrd_While,
     Keywrd_Do,
-    Keywrd_If
+    Keywrd_If,
+    Keywrd_For,
+    Keywrd_Of
 }
 
-const VTOK_EQUIV: [&str; 33] = [
+const VTOK_EQUIV: [&str; 35] = [
     "Plus",
     "Minus",
     "Asterisk",
@@ -71,7 +73,9 @@ const VTOK_EQUIV: [&str; 33] = [
     "EOF",
     "Keywrd:While",
     "Keywrd:Do",
-    "Keywrd:If"
+    "Keywrd:If",
+    "Keywrd:For",
+    "Keywrd:Of"
 ];
 
 impl fmt::Display for VelvetTokenType {

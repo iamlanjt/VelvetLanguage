@@ -1,4 +1,6 @@
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
+
+use crate::tokenizer::token::VelvetToken;
 
 #[derive(Debug, Clone)]
 pub enum Node {
@@ -17,7 +19,8 @@ pub enum Node {
     Eof(Eof),
     WhileStmt(WhileStmt),
     StringLiteral(StringLiteral),
-    IfStmt(IfStmt)
+    IfStmt(IfStmt),
+    Iterator(Iterator)
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +51,13 @@ pub struct BinaryExpr {
 pub struct AssignmentExpr {
     pub left: Box<Node>,
     pub value: Box<Node>
+}
+
+#[derive(Debug, Clone)]
+pub struct Iterator {
+    pub left: VelvetToken,
+    pub right: Box<Node>,
+    pub body: Vec<Box<Node>>
 }
 
 #[derive(Debug, Clone)]
@@ -109,7 +119,7 @@ pub struct ListLiteral {
 
 #[derive(Debug, Clone)]
 pub struct ObjectLiteral {
-    pub props: Vec<Box<Node>>
+    pub props: HashMap<String, Box<Node>>
 }
 
 #[derive(Debug, Clone)]

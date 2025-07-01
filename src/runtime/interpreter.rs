@@ -1,6 +1,6 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Node, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, NullVal, NumberVal, ReturnVal, RuntimeVal, StringVal}}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, Node, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
 use crate::{runtime::source_environment::*};
 
 pub struct Interpreter {
@@ -28,7 +28,7 @@ impl Interpreter {
     pub fn evaluate(&mut self, node: Box<Node>, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
         match node.as_ref() {
             Node::NumericLiteral(nl) => {
-                let numeric_value: usize = nl.literal_value.parse().unwrap();
+                let numeric_value: i32 = nl.literal_value.parse().unwrap();
                 Box::new(RuntimeVal::NumberVal(NumberVal {
                     value: numeric_value
                 }))
@@ -41,6 +41,15 @@ impl Interpreter {
             Node::Return(ret) => {
                 Box::new(RuntimeVal::ReturnVal(ReturnVal {
                     value: ret.return_statement.clone()
+                }))
+            }
+            Node::ListLiteral(ll) => {
+                let mut results: Vec<RuntimeVal> = Vec::new();
+                for inner_node in &ll.props {
+                    results.push(*self.evaluate(inner_node.clone(), Rc::clone(&env)));
+                }
+                Box::new(RuntimeVal::ListVal(ListVal {
+                    values: results
                 }))
             }
             Node::BinaryExpr(binop) => {
@@ -70,8 +79,59 @@ impl Interpreter {
             Node::CallExpr(cexpr) => {
                 self.evaluate_call_expr(cexpr, env)
             }
+            Node::Iterator(it) => {
+                self.evaluate_iterator_expr(it, env)
+            }
+            Node::ObjectLiteral(ol) => {
+                self.evaluate_object_literal(ol, env)
+            }
             _ => {
                 panic!("Evaluation match fault:\nThis node has not been set up for execution yet!\n\n{:#?}\n\n", node)
+            }
+        }
+    }
+
+    fn evaluate_object_literal(&mut self, ov: &ObjectLiteral, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        let mut runtime_props: HashMap<String, RuntimeVal> = HashMap::new();
+        for inner_prop in &ov.props {
+            runtime_props.insert(inner_prop.0.to_string(), *self.evaluate(inner_prop.1.clone(), Rc::clone(&env)));
+        }
+        Box::new(RuntimeVal::ObjectVal(ObjectVal {
+            values: runtime_props
+        }))
+    }
+
+    fn evaluate_iterator_expr(&mut self, it: &Iterator, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        let var_name = &it.left.literal_value;
+        let loop_through = self.evaluate(it.right.clone(), Rc::clone(&env));
+
+        match loop_through.as_ref() {
+            RuntimeVal::ListVal(lv) => {
+                let mut last_result: Box<RuntimeVal> = Box::new(RuntimeVal::NullVal(NullVal {  }));
+                for v in &lv.values {
+                    let sub_environment = Rc::new(RefCell::new(SourceEnv::new(Some(Rc::clone(&env)))));
+                    sub_environment.borrow_mut().declare_var(
+                        it.left.literal_value.clone(),
+                        v.clone(),
+                        "u".to_owned(),
+                        false
+                    );
+                    for sub_expr in &it.body {
+                        last_result = self.evaluate(sub_expr.clone(), Rc::clone(&sub_environment));
+                        match last_result.as_ref() {
+                            RuntimeVal::ReturnVal(rt) => {
+                                return self.evaluate(rt.clone().value, Rc::clone(&sub_environment));
+                            }
+                            _ => {
+                                
+                            }
+                        }
+                    }
+                }
+                last_result
+            }
+            _ => {
+                panic!("Cannot loop through non-list type");
             }
         }
     }
@@ -171,6 +231,9 @@ impl Interpreter {
             RuntimeVal::FunctionVal(f) => true, // because why tf not
             RuntimeVal::ReturnVal(rt) => true,
             RuntimeVal::InternalFunctionVal(rt) => true, // because why tf not x2??
+            RuntimeVal::IteratorVal(it) => true,
+            RuntimeVal::ListVal(lv) => true,
+            RuntimeVal::ObjectVal(ov) => true
         }
     }
 
@@ -187,11 +250,12 @@ impl Interpreter {
         let condition_result = self.evaluate_comparator_expr(comparator, Rc::clone(&env));
 
         if self.is_truthy(&*&condition_result, Rc::clone(&env)) {
+            let mut last_result: Box<RuntimeVal> = Box::new(RuntimeVal::NullVal(NullVal {  }));
             for sub_node in &if_stmt.body {
-                self.evaluate(sub_node.clone(), Rc::clone(&env));
+                last_result = self.evaluate(sub_node.clone(), Rc::clone(&env));
             }
+            return last_result
         }
-
         Box::new(RuntimeVal::NullVal(NullVal {  }))
     }
 
@@ -255,7 +319,7 @@ impl Interpreter {
 
         match (&*left_result, &*right_result) {
             (RuntimeVal::NumberVal(left_num), RuntimeVal::NumberVal(right_num)) => {
-                let mut end_result: usize = 0;
+                let mut end_result: i32 = 0;
 
                 match binop.op.as_str() {
                     "+" => {

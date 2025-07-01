@@ -23,15 +23,18 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
         ("as", VelvetTokenType::Keywrd_As),
         ("while", VelvetTokenType::Keywrd_While),
         ("do", VelvetTokenType::Keywrd_Do),
-        ("if", VelvetTokenType::Keywrd_If)
+        ("if", VelvetTokenType::Keywrd_If),
+        ("for", VelvetTokenType::Keywrd_For),
+        ("of", VelvetTokenType::Keywrd_Of)
     ]);
 
-    while tokenizer_index < input_characters.len() - 1 {
-        if first == false { tokenizer_index = tokenizer_index + 1; }
-        first = false;
+    while tokenizer_index < input_characters.len() {
         let mut current_char = input_characters[tokenizer_index];
 
-        if current_char.is_whitespace() {continue}
+        if current_char.is_whitespace() {
+            tokenizer_index += 1;
+            continue
+        }
 
         // Single char mapping
         let mut prefix_literal_value = "".to_owned();
@@ -74,6 +77,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
                 end_index: tokenizer_index,
                 literal_value: prefix_literal_value + &input_characters[tokenizer_index].to_string()
             });
+            tokenizer_index += 1;
             continue;
         }
 
@@ -83,16 +87,12 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             let mut final_number = "".to_owned();
             let start_index = tokenizer_index;
             
-            while current_char.is_numeric() {
-                final_number = final_number + &current_char.to_string();
-                if tokenizer_index + 1 >= input_characters.len() {
-                    break
-                }
+            while tokenizer_index < input_characters.len()
+                && input_characters[tokenizer_index].is_numeric()
+            {
+                final_number.push(input_characters[tokenizer_index]);
                 tokenizer_index += 1;
-                current_char = input_characters[tokenizer_index]
             }
-
-            tokenizer_index -= 1;
 
             end_tokens.push(VelvetToken {
                 kind: VelvetTokenType::Number,
@@ -138,6 +138,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
                 end_index: tokenizer_index,
                 literal_value: final_ident
             });
+            tokenizer_index += 1;
             continue
         }
 
@@ -167,6 +168,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
                 end_index: tokenizer_index,
                 literal_value: end_string
             });
+            tokenizer_index += 1;
             continue
         }
 

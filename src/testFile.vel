@@ -1,12 +1,16 @@
--> add(one, two) => number {
-    print("One is", itypeof(one), one)
-    print("Two is", itypeof(two), two)
-
-    ; one + two
+-> fib(n) => number {
+    if n < 2 {
+        ; n
+    }
+    ; fib(n - 1) + fib(n - 2)
 }
 
-print("add is", itypeof(add), add)
-bind result as number = add(8, 2)
-print("Result is", itypeof(result), result)
+bind fib_attempt_list as any = [
+    0, 1, 2, 3, 4, 5,
 
-print("Print is", itypeof(print))
+    10, 15
+]
+
+for this_fib of fib_attempt_list do {
+    print(fib(this_fib))
+}
