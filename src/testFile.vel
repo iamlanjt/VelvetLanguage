@@ -1,1 +1,12 @@
-print(1)
+-> add(one, two) => number {
+    print("One is", itypeof(one), one)
+    print("Two is", itypeof(two), two)
+
+    ; one + two
+}
+
+print("add is", itypeof(add), add)
+bind result as number = add(8, 2)
+print("Result is", itypeof(result), result)
+
+print("Print is", itypeof(print))

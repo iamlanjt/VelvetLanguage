@@ -36,10 +36,37 @@ impl SourceEnv {
                 value: RuntimeVal::InternalFunctionVal(InternalFunctionVal {
                     fn_name: "print".to_string(),
                     internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                        let mut end_printstr = String::new();
                         for arg in &args {
-                            print!("{}", arg.to_string());
+                            end_printstr += &arg.to_string();
+                            end_printstr += " ";
                         }
+                        println!("{}", end_printstr);
                         RuntimeVal::NullVal(NullVal {})
+                    })
+                }),
+                var_type: String::from("internal_fn"),
+                is_mutable: false
+            }),
+            ("itypeof".to_string(), EnvVar {
+                value: RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                    fn_name: "itypeof".to_string(),
+                    internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                        if let Some(first) = args.first() {
+                            let internal_type: &str = match first {
+                                RuntimeVal::BoolVal(b) => "boolean",
+                                RuntimeVal::FunctionVal(f) => "function",
+                                RuntimeVal::InternalFunctionVal(f) => "internal_function",
+                                RuntimeVal::NullVal(n) => "null",
+                                RuntimeVal::NumberVal(n) => "number",
+                                RuntimeVal::ReturnVal(r) => "return",
+                                RuntimeVal::StringVal(s) => "string",
+                                _ => "unknown"
+                            };
+                            RuntimeVal::StringVal(StringVal { value: internal_type.to_string() })
+                        } else {
+                            RuntimeVal::NullVal(NullVal {})
+                        }
                     })
                 }),
                 var_type: String::from("internal_fn"),
