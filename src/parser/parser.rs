@@ -1,4 +1,6 @@
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, ListLiteral, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use std::rc::Rc;
+
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, ListLiteral, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
@@ -126,11 +128,13 @@ impl Parser {
         }
 
         self.expect_token(VelvetTokenType::RBrace, "Expected end of body for function");
+
+        let rc_body = Rc::new(body);
         
         return Box::new(Node::FunctionDefinition(FunctionDefinition {
             params: parameter_names,
             name: function_name,
-            body: body,
+            body: rc_body,
             return_type: return_type
         }))
     }
@@ -222,7 +226,6 @@ impl Parser {
 
     fn parse_object_expr(&mut self) -> Box<Node> {
         if self.current().kind != VelvetTokenType::LBrace {
-            println!("{:#?}", self.current());
             return self.parse_additive_expr();
         }
 
@@ -369,6 +372,23 @@ impl Parser {
         call_expr
     }
 
+    fn parse_if_statement(&mut self) -> Box<Node> {
+        let condition = self.parse_comparator_expr();
+
+        self.expect_token(VelvetTokenType::LBrace, "Expected body of loop");
+        
+        let mut body: Vec<Box<Node>> = Vec::new();
+        while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
+            body.push(self.parse_stmt());
+        }
+
+        self.expect_token(VelvetTokenType::RBrace, "Expected closing brace for body of if statement");
+        Box::new(Node::IfStmt(IfStmt {
+            condition,
+            body
+        }))
+    }
+
     fn parse_while_stmt(&mut self) -> Box<Node> {
         let loop_condition = self.parse_comparator_expr();
 
@@ -398,12 +418,18 @@ impl Parser {
             VelvetTokenType::Identifier => Box::new(Node::Identifier(Identifier {
                 identifier_name: tk.literal_value.clone()
             })),
+            VelvetTokenType::Str => Box::new(Node::StringLiteral(StringLiteral {
+                literal_value: tk.literal_value.clone()
+            })),
             VelvetTokenType::Keywrd_While => {
                 self.parse_while_stmt()
             }
             VelvetTokenType::LParen => {
                 // self.eat();
                 self.parse_expr()
+            }
+            VelvetTokenType::Keywrd_If => {
+                self.parse_if_statement()
             }
             _ => panic!("This token sequence has no applicable parsing path yet: {}", tk.kind)
         }

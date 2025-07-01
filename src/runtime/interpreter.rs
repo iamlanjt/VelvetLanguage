@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, Comparator, Identifier, Node, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, NullVal, NumberVal, RuntimeVal}}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Node, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, NullVal, NumberVal, ReturnVal, RuntimeVal, StringVal}}};
 use crate::{runtime::source_environment::*};
 
 pub struct Interpreter {
@@ -33,6 +33,16 @@ impl Interpreter {
                     value: numeric_value
                 }))
             }
+            Node::StringLiteral(slit) => {
+                Box::new(RuntimeVal::StringVal(StringVal {
+                    value: slit.literal_value.clone()
+                }))
+            }
+            Node::Return(ret) => {
+                Box::new(RuntimeVal::ReturnVal(ReturnVal {
+                    value: ret.return_statement.clone()
+                }))
+            }
             Node::BinaryExpr(binop) => {
                 self.evaluate_binary_expr(binop, env)
             }
@@ -45,16 +55,75 @@ impl Interpreter {
             Node::WhileStmt(while_loop) => {
                 self.evaluate_while_stmt(while_loop, env)
             }
+            Node::IfStmt(if_stmt) => {
+                self.evaluate_if_stmt(if_stmt, env)
+            }
             Node::Comparator(comp) => {
                 self.evaluate_comparator_expr(comp, env)
             }
             Node::AssignmentExpr(asexp) => {
                 self.evaluate_assignment_expr(asexp, env)
             }
+            Node::FunctionDefinition(fdef) => {
+                self.evaluate_function_definition(fdef, env)
+            }
+            Node::CallExpr(cexpr) => {
+                self.evaluate_call_expr(cexpr, env)
+            }
             _ => {
-                panic!("Evaluation match fault:\nThis node has not been set up for execution yet!\nNode; {:?}", node)
+                panic!("Evaluation match fault:\nThis node has not been set up for execution yet!\n\n{:#?}\n\n", node)
             }
         }
+    }
+
+    fn evaluate_call_expr(&mut self, cexpr: &CallExpr, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        let caller = self.evaluate(cexpr.caller.clone(), Rc::clone(&env));
+        match caller.as_ref() {
+            RuntimeVal::FunctionVal(r#fn) => {
+                // create sub-environment
+                let sub_environment = Rc::new(RefCell::new(SourceEnv::new(Some(Rc::clone(&env)))));
+
+                // set all the args for the sub environment that were supplied in the CallExpr
+                let mut i = 0;
+                for arg in &cexpr.args {
+                    let evaluated = self.evaluate(arg.clone(), Rc::clone(&env));
+                    sub_environment.borrow_mut().declare_var(r#fn.params[i].clone(), *evaluated, "inferred_any".to_string(), false);
+                    i = i + 1;
+                }
+
+                let mut last_result: Box<RuntimeVal> = Box::new(RuntimeVal::NullVal(NullVal {  }));
+                for sub_expr in r#fn.execution_body.as_ref() {
+                    last_result = self.evaluate(sub_expr.clone(), Rc::clone(&sub_environment));
+                    match last_result.as_ref() {
+                        RuntimeVal::ReturnVal(rt) => {
+                            return self.evaluate(rt.clone().value, Rc::clone(&sub_environment));
+                        }
+                        _ => {
+                            
+                        }
+                    }
+                }
+                last_result
+            }
+            _ => {
+                panic!("Cannot call type \"{:#?}\"", caller)
+            }
+        }
+    }
+
+    fn evaluate_function_definition(&mut self, def: &FunctionDefinition, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        let this_function_val = RuntimeVal::FunctionVal(FunctionVal {
+            params: def.params.clone(),
+            fn_name: def.name.clone(),
+            execution_body: Rc::clone(&def.body), // Reference counter clone because deep cloning nodes is not cheap
+            is_internal: false
+        });
+
+        // Add to env
+        env.borrow_mut().declare_var(def.name.clone(), this_function_val, String::from("function"), false);
+
+        // Definitions do not return anything; it is automatically added by name to the env
+        Box::new(RuntimeVal::NullVal(NullVal {  }))
     }
 
     fn evaluate_assignment_expr(&mut self, asexp: &AssignmentExpr, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
@@ -90,7 +159,31 @@ impl Interpreter {
             RuntimeVal::NullVal(_nv) => false,
             RuntimeVal::NumberVal(n) => n.value != 0,
             RuntimeVal::BoolVal(b) => b.value == true,
+            RuntimeVal::StringVal(s) => true,
+            RuntimeVal::FunctionVal(f) => true, // because why tf not
+            RuntimeVal::ReturnVal(rt) => true
         }
+    }
+
+    fn evaluate_if_stmt(&mut self, if_stmt: &IfStmt, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        let condition_node = if_stmt.condition.as_ref();
+
+        // TODO: see about using self.is_truthy instead; add case to is_truthy to run itself on Comparators
+        // this would allow for things like `if my_true_variable {}` instead of `if my_true_variable == true {}`
+        let comparator = match condition_node {
+            Node::Comparator(comp) => comp,
+            _ => panic!("If condition must be a comparator expression")
+        };
+
+        let condition_result = self.evaluate_comparator_expr(comparator, Rc::clone(&env));
+
+        if self.is_truthy(&*&condition_result, Rc::clone(&env)) {
+            for sub_node in &if_stmt.body {
+                self.evaluate(sub_node.clone(), Rc::clone(&env));
+            }
+        }
+
+        Box::new(RuntimeVal::NullVal(NullVal {  }))
     }
 
     fn evaluate_while_stmt(&mut self, while_loop: &WhileStmt, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
@@ -175,6 +268,19 @@ impl Interpreter {
 
                 return Box::new(RuntimeVal::NumberVal(NumberVal { value: end_result  }))
             },
+            (RuntimeVal::StringVal(left_str), RuntimeVal::StringVal(right_str)) => {
+                let mut end_result = "".to_string();
+                match binop.op.as_str() {
+                    "+" => {
+                        end_result = left_str.value.clone() + &right_str.value
+                    }
+                    _ => {
+                        panic!("Binary operator \"{}\" is not allowed on types String and String.", binop.op.as_str())
+                    }
+                };
+                
+                return Box::new(RuntimeVal::StringVal(StringVal { value: end_result.to_string() }));
+            }
             _ => {
                 panic!("Binary expression operands must be numbers");
             }

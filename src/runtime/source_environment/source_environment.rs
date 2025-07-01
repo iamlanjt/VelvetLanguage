@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::runtime::values::RuntimeVal;
+use crate::runtime::values::{RuntimeVal, StringVal};
 
 #[derive(Debug, Clone)]
 pub struct EnvVar {
@@ -24,8 +24,17 @@ impl SourceEnv {
     }
 
     pub fn create_global() -> Rc<RefCell<Self>> {
+        let variables: HashMap<String, EnvVar> = HashMap::from([
+            ("__VELVET_VERSION".to_string(), EnvVar {
+                value: RuntimeVal::StringVal(StringVal {
+                    value: env!("CARGO_PKG_VERSION").to_string()
+                }),
+                var_type: "string".to_string(),
+                is_mutable: false
+            })
+        ]);
         Rc::new(RefCell::new(Self {
-            variables: HashMap::new(),
+            variables: variables,
             parent: None,
         }))
     }

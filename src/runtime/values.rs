@@ -1,8 +1,15 @@
+use std::rc::Rc;
+
+use crate::parser::nodetypes::Node;
+
 #[derive(Debug, Clone)]
 pub enum RuntimeVal {
     NumberVal(NumberVal),
     NullVal(NullVal),
-    BoolVal(BoolVal)
+    FunctionVal(FunctionVal),
+    BoolVal(BoolVal),
+    StringVal(StringVal),
+    ReturnVal(ReturnVal)
 }
 
 impl RuntimeVal {
@@ -49,4 +56,22 @@ pub struct NullVal {
 #[derive(Debug, Clone)]
 pub struct BoolVal {
     pub value: bool
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionVal {
+    pub params: Vec<String>,
+    pub fn_name: String,
+    pub execution_body: Rc<Vec<Box<Node>>>,
+    pub is_internal: bool
+}
+
+#[derive(Debug, Clone)]
+pub struct StringVal {
+    pub value: String
+}
+
+#[derive(Debug, Clone)]
+pub struct ReturnVal {
+    pub value: Box<Node>
 }

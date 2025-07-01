@@ -34,7 +34,7 @@ fn print_node(node: &Box<Node>, depth: usize) {
             println!("{}    param count:     {}", indent, f.params.len());
             println!("{}    body node count: {}", indent, f.body.len());
             println!("{}    body expanded:", indent);
-            for sub_node in &f.body {
+            for sub_node in f.body.as_ref() {
                 print_node(&sub_node, depth + 2);
             }
         }
@@ -87,7 +87,7 @@ fn main() {
     let mut interp = Interpreter::new(result);
     let mut this_env = SourceEnv::create_global();
     let interp_result = interp.evaluate_body(Rc::clone(&this_env));
-    println!("{:?}", interp_result);
+    println!("\n** EVALUATION RESULTS **\n  {:?}", interp_result);
     println!("\n\nDumping environment in debug mode");
     let env_ref = this_env.borrow(); // borrow lives long enough
     let variables: Vec<_> = env_ref.variables.iter().collect();

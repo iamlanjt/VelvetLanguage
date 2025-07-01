@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 #[derive(Debug, Clone)]
 pub enum Node {
     BinaryExpr(BinaryExpr),
@@ -14,10 +16,18 @@ pub enum Node {
     MemberExpr(MemberExpr),
     Eof(Eof),
     WhileStmt(WhileStmt),
+    StringLiteral(StringLiteral),
+    IfStmt(IfStmt)
 }
 
 #[derive(Debug, Clone)]
 pub struct WhileStmt {
+    pub condition: Box<Node>,
+    pub body: Vec<Box<Node>>
+}
+
+#[derive(Debug, Clone)]
+pub struct IfStmt {
     pub condition: Box<Node>,
     pub body: Vec<Box<Node>>
 }
@@ -44,7 +54,7 @@ pub struct AssignmentExpr {
 pub struct FunctionDefinition {
     pub params: Vec<String>,
     pub name: String,
-    pub body: Vec<Box<Node>>,
+    pub body: Rc<Vec<Box<Node>>>,
     pub return_type: String
 }
 
@@ -100,4 +110,9 @@ pub struct ListLiteral {
 #[derive(Debug, Clone)]
 pub struct ObjectLiteral {
     pub props: Vec<Box<Node>>
+}
+
+#[derive(Debug, Clone)]
+pub struct StringLiteral {
+    pub literal_value: String
 }

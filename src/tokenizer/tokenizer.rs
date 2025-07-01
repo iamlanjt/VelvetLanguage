@@ -22,7 +22,8 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
         ("bindm", VelvetTokenType::Keywrd_Bindmutable),
         ("as", VelvetTokenType::Keywrd_As),
         ("while", VelvetTokenType::Keywrd_While),
-        ("do", VelvetTokenType::Keywrd_Do)
+        ("do", VelvetTokenType::Keywrd_Do),
+        ("if", VelvetTokenType::Keywrd_If)
     ]);
 
     while tokenizer_index < input_characters.len() - 1 {
@@ -91,7 +92,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
                 current_char = input_characters[tokenizer_index]
             }
 
-            //tokenizer_index -= 1;
+            tokenizer_index -= 1;
 
             end_tokens.push(VelvetToken {
                 kind: VelvetTokenType::Number,
@@ -103,7 +104,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
         }
 
         // Identifiers
-        if current_char.is_alphabetic() {
+        if current_char.is_alphabetic() || current_char == '_' {
             let mut final_ident: String = "".to_owned();
             let start_index: usize = tokenizer_index;
 
