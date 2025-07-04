@@ -28,7 +28,7 @@ impl Interpreter {
     pub fn evaluate(&mut self, node: Box<Node>, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
         match node.as_ref() {
             Node::NumericLiteral(nl) => {
-                let numeric_value: i32 = nl.literal_value.parse().unwrap();
+                let numeric_value: isize = nl.literal_value.parse().unwrap();
                 Box::new(RuntimeVal::NumberVal(NumberVal {
                     value: numeric_value
                 }))
@@ -319,7 +319,7 @@ impl Interpreter {
 
         match (&*left_result, &*right_result) {
             (RuntimeVal::NumberVal(left_num), RuntimeVal::NumberVal(right_num)) => {
-                let mut end_result: i32 = 0;
+                let mut end_result: isize = 0;
 
                 match binop.op.as_str() {
                     "+" => {

@@ -8,7 +8,7 @@ mod parser;
 mod runtime;
 
 const DO_DUMP_TOKENS: bool = false;
-const DO_DUMP_AST: bool = false;
+const DO_DUMP_AST: bool = true;
 const DO_DUMP_EVAL_RESULTS: bool = false;
 const DO_DUMP_ENV: bool = false;
 

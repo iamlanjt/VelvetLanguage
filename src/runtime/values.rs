@@ -1,6 +1,12 @@
-use std::{collections::HashMap, fmt, rc::Rc};
+use std::{collections::HashMap, fmt, io::Split, rc::Rc};
 
 use crate::parser::nodetypes::Node;
+
+pub type NativeMethod = fn(&RuntimeVal, Vec<RuntimeVal>) -> RuntimeVal;
+
+pub trait HasMethods {
+    fn get_methods(&self) -> HashMap<String, NativeMethod>;
+}
 
 #[derive(Debug, Clone)]
 pub enum RuntimeVal {
@@ -49,7 +55,7 @@ impl RuntimeVal {
 
 #[derive(Debug, Clone)]
 pub struct NumberVal {
-    pub value: i32
+    pub value: isize
 }
 
 #[derive(Debug, Clone)]

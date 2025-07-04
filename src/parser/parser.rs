@@ -320,7 +320,10 @@ impl Parser {
             }
 
             let operator = self.eat().literal_value.clone();
-            let right = self.parse_primary_expr();
+            
+            // MARKER: Bugx001 fix, `self.parse_primary_expr()` -> `self.parse_additive_expr()`
+            // Putting a marker here because this is such a volatile change that future possible bugs relating to this change may be hard to deduce.
+            let right = self.parse_additive_expr();
             left = Box::new(Node::BinaryExpr(BinaryExpr {
                 left,
                 right: right,

@@ -1,16 +1,1 @@
--> fib(n) => number {
-    if n < 2 {
-        ; n
-    }
-    ; fib(n - 1) + fib(n - 2)
-}
-
-bind fib_attempt_list as any = [
-    0, 1, 2, 3, 4, 5,
-
-    10, 15
-]
-
-for this_fib of fib_attempt_list do {
-    print(fib(this_fib))
-}
+print(5+2)

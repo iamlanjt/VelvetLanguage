@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::runtime::values::{InternalFunctionVal, NullVal, RuntimeVal, StringVal};
+use crate::runtime::values::{InternalFunctionVal, NullVal, ObjectVal, RuntimeVal, StringVal};
 
 #[derive(Debug, Clone)]
 pub struct EnvVar {
@@ -71,6 +71,20 @@ impl SourceEnv {
                 }),
                 var_type: String::from("internal_fn"),
                 is_mutable: false
+            }),
+            ("network".to_string(), EnvVar {
+                var_type: String::from("internal_object"),
+                is_mutable: false,
+                value: RuntimeVal::ObjectVal(ObjectVal {
+                    values: HashMap::from([
+                        ("get".to_string(), RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: String::from("get"),
+                            internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                                return RuntimeVal::NullVal(NullVal {  });
+                            })
+                        }))
+                    ])
+                })
             })
         ]);
         Rc::new(RefCell::new(Self {
