@@ -81,16 +81,22 @@ fn main() {
     let ast = parser.produce_ast();
 
     if args.iter().find(|p| {
-        *p == "DO_DUMP_AST"
+        *p.to_lowercase() == *"do_dump_ast"
     }).is_some() {
         println!("[AST Dump]");
         for inner_node in &ast {
             print_node(inner_node, 0);
         }
     }
-
+    let is_sandboxed = if args.iter().find(|p| {
+        *p.to_lowercase() == *"sandbox"
+    }).is_some() {
+        true
+    } else {
+        false
+    };
     let mut interp = Interpreter::new(ast);
-    interp.evaluate_body(SourceEnv::create_global());
+    interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
 }
 
 /*

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::runtime::values::{InternalFunctionVal, ListVal, NullVal, ObjectVal, RuntimeVal, StringVal};
+use crate::runtime::values::{BoolVal, InternalFunctionVal, ListVal, NullVal, ObjectVal, RuntimeVal, StringVal};
 
 #[derive(Debug, Clone)]
 pub struct EnvVar {
@@ -12,7 +12,8 @@ pub struct EnvVar {
 #[derive(Debug, Clone)]
 pub struct SourceEnv {
     pub parent: Option<Rc<RefCell<SourceEnv>>>,
-    pub variables: HashMap<String, EnvVar>
+    pub variables: HashMap<String, EnvVar>,
+    pub is_sandboxed: bool
 }
 
 /// An entity that facilitates the declaration, reassignment, and lookup of variables.
@@ -22,18 +23,30 @@ impl SourceEnv {
     pub fn new(parent: Option<Rc<RefCell<SourceEnv>>>) -> Self {
         Self {
             variables: HashMap::new(),
-            parent: parent
+            parent: parent,
+            is_sandboxed: false
         }
     }
 
     /// Creates an environment with default Velvet standard library values pre-defined.
-    pub fn create_global() -> Rc<RefCell<Self>> {
-        let variables: HashMap<String, EnvVar> = HashMap::from([
+    pub fn create_global(do_sandbox_safety: bool) -> Rc<RefCell<Self>> {
+        let is_sandboxed = do_sandbox_safety.clone();
+        let mut this_env = Self {
+            variables: HashMap::new(),
+            parent: None,
+            is_sandboxed: is_sandboxed
+        };
+        this_env.variables = HashMap::from([
             ("__VELVET_VERSION".to_string(), EnvVar {
                 value: RuntimeVal::StringVal(StringVal {
                     value: env!("CARGO_PKG_VERSION").to_string()
                 }),
                 var_type: "string".to_string(),
+                is_mutable: false
+            }),
+            ("__IS_SANDBOXED".to_string(), EnvVar {
+                value: RuntimeVal::BoolVal(BoolVal { value: do_sandbox_safety }),
+                var_type: "bool".to_string(),
                 is_mutable: false
             }),
             ("print".to_string(), EnvVar {
@@ -136,10 +149,7 @@ impl SourceEnv {
                 })
             }),
         ]);
-        Rc::new(RefCell::new(Self {
-            variables: variables,
-            parent: None,
-        }))
+        Rc::new(RefCell::new(this_env))
     }
 
     pub fn declare_var(&mut self, var_name: String, var_value: RuntimeVal, var_type: String, var_is_mutable: bool) {
