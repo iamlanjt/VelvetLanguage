@@ -9,33 +9,6 @@ mod parser;
 mod runtime;
 mod tests;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() == 1 {
-        panic!("The Velvet REPL is not released yet! Please provide a file to execute.")
-    }
-
-    let file_path = args[1].clone();
-    let contents = fs::read_to_string(file_path);
-    if contents.is_err() {
-        panic!("Unable to execute Velvet file: {:#?}", contents)
-    }
-
-    let mut interp = Interpreter::new(Parser::new(&contents.unwrap()).produce_ast());
-    interp.evaluate_body(SourceEnv::create_global());
-}
-
-/*
-// The following code is commented out in production, but is used in development to debug all aspects of Velvet.
-
-const DO_DUMP_TOKENS: bool = false;
-const DO_DUMP_AST: bool = false;
-const DO_DUMP_EVAL_RESULTS: bool = false;
-const DO_DUMP_ENV: bool = false;
-
-// this function is cringe and will be removed in the event this language is released
-// consider it debug, and in place for actual Display fmt implementations
 fn print_node(node: &Box<Node>, depth: usize) {
     let indent = "    ".repeat(depth);
 
@@ -70,11 +43,66 @@ fn print_node(node: &Box<Node>, depth: usize) {
             println!("{}    return stmt expanded:", indent);
             print_node(&r.return_statement, depth + 2);
         }
+        Node::CallExpr(cexpr) => {
+            println!("{}->call", indent);
+            println!("{}    target:", indent);
+            print_node(&cexpr.caller, depth + 2);
+            println!("{}    args:", indent);
+            for arg in cexpr.args.clone() {
+                print_node(&arg, depth + 2);
+            }
+        }
+        Node::StringLiteral(strlit) => {
+            println!("{}->stringliteral \"{}\"", indent, strlit.literal_value);
+        }
+        Node::Identifier(ident) => {
+            println!("{}->identifier {}", indent, ident.identifier_name);
+        }
         _ => {
             println!("{}Unknown: {:?}", indent, node)
         }
     }
 }
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() == 1 {
+        panic!("The Velvet REPL is not released yet! Please provide a file to execute.")
+    }
+
+    let file_path = args[1].clone();
+    let contents = fs::read_to_string(file_path);
+    if contents.is_err() {
+        panic!("Unable to execute Velvet file: {:#?}", contents)
+    }
+
+    let mut parser = Parser::new(&contents.unwrap());
+    let ast = parser.produce_ast();
+
+    if args.iter().find(|p| {
+        *p == "DO_DUMP_AST"
+    }).is_some() {
+        println!("[AST Dump]");
+        for inner_node in &ast {
+            print_node(inner_node, 0);
+        }
+    }
+
+    let mut interp = Interpreter::new(ast);
+    interp.evaluate_body(SourceEnv::create_global());
+}
+
+/*
+// The following code is commented out in production, but is used in development to debug all aspects of Velvet.
+
+const DO_DUMP_TOKENS: bool = false;
+const DO_DUMP_AST: bool = false;
+const DO_DUMP_EVAL_RESULTS: bool = false;
+const DO_DUMP_ENV: bool = false;
+
+// this function is cringe and will be removed in the event this language is released
+// consider it debug, and in place for actual Display fmt implementations
 
 fn print_env_var(name: &String, var: &EnvVar, depth: usize) {
     let indent = "    ".repeat(depth);

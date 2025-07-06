@@ -1,5 +1,1 @@
-|-> error(reason) {
-    print("Unexpected exit due to error:", reason)
-}
-
-error("Hello World")
+print("Hello World")
