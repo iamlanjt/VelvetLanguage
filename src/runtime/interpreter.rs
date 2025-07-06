@@ -85,7 +85,7 @@ impl Interpreter {
                 self.evaluate_object_literal(ol, env)
             }
             Node::MemberExpr(mem) => {
-                self.evaluate_member_expr(mem, env, 0)
+                self.evaluate_member_expr(mem, env)
             }
             _ => {
                 panic!("Evaluation match fault:\nThis node has not been set up for execution yet!\n\n{:#?}\n\n", node)
@@ -93,27 +93,46 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_member_expr(&mut self, mem: &MemberExpr, env: Rc<RefCell<SourceEnv>>, depth: u32) -> Box<RuntimeVal> {
-        return Box::new(RuntimeVal::NullVal(NullVal {  }));
-        /*
-        if depth < 1 {
-            let object_parsed = self.evaluate(mem.object, Rc::clone(&env));
-            let result = match mem.property {
-                Node::MemberExpr(innermem) => {
-                    self.evaluate_member_expr(innermem, Rc::clone(&env), depth + 1)
-                }
-                _ => {
-                    self.evaluate(mem.property, Rc::clone(&env))
-                }
-            };
+    fn evaluate_member_expr(&mut self, mem: &MemberExpr, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        let base_val = match *mem.object {
+            Node::Identifier(ref ident) => self.evaluate_identifier(ident, Rc::clone(&env)),
+            Node::MemberExpr(ref inner) => self.evaluate_member_expr(inner, Rc::clone(&env)),
+            _ => {
+                panic!("Invalid object in member expression.");
+            }
+        };
 
-            match object_parsed {
-                Node::ObjectLiteral(obj) => {
-                    
+        let property_key = match *mem.property {
+            Node::Identifier(ref ident) => ident.identifier_name.clone(),
+            Node::NumericLiteral(ref numlit) => numlit.literal_value.clone(),
+            _ => {
+                panic!("Invalid property in member expression.")
+            }
+        };
+
+        match *base_val {
+            RuntimeVal::ObjectVal(ref obj) => {
+                if let Some(val) = obj.values.get(&property_key) {
+                    return Box::new(val.clone());
+                } else {
+                    return Box::new(RuntimeVal::NullVal(NullVal {  }));
                 }
             }
+            RuntimeVal::ListVal(ref list) => {
+                if let Ok(idx) = property_key.parse::<usize>() {
+                    if let Some(val) = list.values.get(idx) {
+                        return Box::new(val.clone());
+                    } else {
+                        panic!("Index {} is out of bounds!", idx);
+                    }
+                } else {
+                    panic!("Invalid index access on list: {}", property_key);
+                }
+            }
+            _ => {
+                panic!("Cannot access property '{}' on non-object value.", property_key);
+            }
         }
-        */
     }
 
     fn evaluate_object_literal(&mut self, ov: &ObjectLiteral, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
