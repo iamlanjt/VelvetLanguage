@@ -1,6 +1,7 @@
 use crate::parser::{nodetypes::{BinaryExpr, Node}, parser::Parser};
 
 #[cfg(test)]
+#[allow(warnings)]
 
 use super::super::parser;
 

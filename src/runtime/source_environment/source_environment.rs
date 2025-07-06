@@ -103,7 +103,7 @@ impl SourceEnv {
                     ])
                 })
             }),
-            ("".to_string(), EnvVar {
+            ("string".to_string(), EnvVar {
                 var_type: String::from("internal_object"),
                 is_mutable: false,
                 value: RuntimeVal::ObjectVal(ObjectVal {

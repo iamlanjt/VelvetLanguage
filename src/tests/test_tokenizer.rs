@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(warnings)]
 
 use std::{collections::HashMap, vec};
 
