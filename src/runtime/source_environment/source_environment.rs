@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::runtime::values::{InternalFunctionVal, NullVal, ObjectVal, RuntimeVal, StringVal};
+use crate::runtime::values::{InternalFunctionVal, ListVal, NullVal, ObjectVal, RuntimeVal, StringVal};
 
 #[derive(Debug, Clone)]
 pub struct EnvVar {
@@ -15,6 +15,9 @@ pub struct SourceEnv {
     pub variables: HashMap<String, EnvVar>
 }
 
+/// An entity that facilitates the declaration, reassignment, and lookup of variables.
+/// 
+/// To create a sub-environment manually, you must `Rc::clone()` the current env, which you can pass into the `parent` of SourceEnv::new.
 impl SourceEnv {
     pub fn new(parent: Option<Rc<RefCell<SourceEnv>>>) -> Self {
         Self {
@@ -23,6 +26,7 @@ impl SourceEnv {
         }
     }
 
+    /// Creates an environment with default Velvet standard library values pre-defined.
     pub fn create_global() -> Rc<RefCell<Self>> {
         let variables: HashMap<String, EnvVar> = HashMap::from([
             ("__VELVET_VERSION".to_string(), EnvVar {
@@ -85,7 +89,52 @@ impl SourceEnv {
                         }))
                     ])
                 })
-            })
+            }),
+            ("".to_string(), EnvVar {
+                var_type: String::from("internal_object"),
+                is_mutable: false,
+                value: RuntimeVal::ObjectVal(ObjectVal {
+                    values: HashMap::from([
+                        ("split".to_string(), RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: String::from("split"),
+                            internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                                let first = args.first().expect("split expects at least one argument");
+                                
+                                let to_split = match first {
+                                    RuntimeVal::StringVal(s) => {
+                                        s.value.clone()
+                                    }
+                                    _ => {
+                                        panic!("First argument must be a string")
+                                    }
+                                };
+
+                                let mut splitter = String::new();
+                                
+                                if args.len() >= 2 {
+                                    match &args[1] {
+                                        RuntimeVal::StringVal(s) => {
+                                            splitter = s.value.clone();
+                                        }
+                                        _ => {
+                                            panic!("Second argument must be a string or null")
+                                        }
+                                    }
+                                }
+
+                                let actual_split = to_split.split(&splitter);
+                                return RuntimeVal::ListVal(ListVal {
+                                    values: actual_split.map(|og_str| 
+                                        RuntimeVal::StringVal(StringVal {
+                                            value: og_str.to_owned()
+                                        })
+                                    ).collect()
+                                })
+                            })
+                        }))
+                    ])
+                })
+            }),
         ]);
         Rc::new(RefCell::new(Self {
             variables: variables,

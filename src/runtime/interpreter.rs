@@ -1,7 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, Node, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
-use crate::{runtime::source_environment::*};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MemberExpr, Node, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
 
 pub struct Interpreter {
     ast: Vec<Box<Node>>,
@@ -85,10 +84,36 @@ impl Interpreter {
             Node::ObjectLiteral(ol) => {
                 self.evaluate_object_literal(ol, env)
             }
+            Node::MemberExpr(mem) => {
+                self.evaluate_member_expr(mem, env, 0)
+            }
             _ => {
                 panic!("Evaluation match fault:\nThis node has not been set up for execution yet!\n\n{:#?}\n\n", node)
             }
         }
+    }
+
+    fn evaluate_member_expr(&mut self, mem: &MemberExpr, env: Rc<RefCell<SourceEnv>>, depth: u32) -> Box<RuntimeVal> {
+        return Box::new(RuntimeVal::NullVal(NullVal {  }));
+        /*
+        if depth < 1 {
+            let object_parsed = self.evaluate(mem.object, Rc::clone(&env));
+            let result = match mem.property {
+                Node::MemberExpr(innermem) => {
+                    self.evaluate_member_expr(innermem, Rc::clone(&env), depth + 1)
+                }
+                _ => {
+                    self.evaluate(mem.property, Rc::clone(&env))
+                }
+            };
+
+            match object_parsed {
+                Node::ObjectLiteral(obj) => {
+                    
+                }
+            }
+        }
+        */
     }
 
     fn evaluate_object_literal(&mut self, ov: &ObjectLiteral, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {

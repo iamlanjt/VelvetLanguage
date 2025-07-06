@@ -2,10 +2,32 @@ use crate::{parser::{nodetypes::Node, parser::Parser}, runtime::{interpreter::In
 use crate::{runtime::source_environment::source_environment::SourceEnv};
 use std::{fs, rc::Rc};
 use std::time::Instant;
+use std::env;
 
 mod tokenizer;
 mod parser;
 mod runtime;
+mod tests;
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() == 1 {
+        panic!("The Velvet REPL is not released yet! Please provide a file to execute.")
+    }
+
+    let file_path = args[1].clone();
+    let contents = fs::read_to_string(file_path);
+    if contents.is_err() {
+        panic!("Unable to execute Velvet file: {:#?}", contents)
+    }
+
+    let mut interp = Interpreter::new(Parser::new(&contents.unwrap()).produce_ast());
+    interp.evaluate_body(SourceEnv::create_global());
+}
+
+/*
+// The following code is commented out in production, but is used in development to debug all aspects of Velvet.
 
 const DO_DUMP_TOKENS: bool = false;
 const DO_DUMP_AST: bool = false;
@@ -118,3 +140,5 @@ fn main() {
 
     println!("Program took {:.2?} ({}ms) from Lexing to Evaluation", lexer_start_time.elapsed(), lexer_start_time.elapsed().as_millis());
 }
+
+*/

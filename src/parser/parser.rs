@@ -55,7 +55,7 @@ impl Parser {
         panic!("\nParser error:  {}\nToken chain reconstruction:  {}\n{indicator}", msg, reconstructed_consumed_tokens);
     }
 
-    fn expect_token(&mut self, expected_type: VelvetTokenType, message: &str) -> VelvetToken {
+    pub fn expect_token(&mut self, expected_type: VelvetTokenType, message: &str) -> VelvetToken {
         let tkn = self.eat();
         if tkn.kind != expected_type {
             self.error(&tkn, &format!("\nParser expected token type \"{}\", got \"{}\"\nExpectation fault message: \n{}\n", expected_type, tkn.kind, message));
@@ -77,7 +77,7 @@ impl Parser {
         program
     }
 
-    fn parse_stmt(&mut self) -> Box<Node> {
+    pub fn parse_stmt(&mut self) -> Box<Node> {
         match self.current().kind {
             VelvetTokenType::Keywrd_Bind => self.parse_var_declaration(),
             VelvetTokenType::Keywrd_Bindmutable => self.parse_var_declaration(),
@@ -87,7 +87,7 @@ impl Parser {
         }
     }
 
-    fn parse_return_statement(&mut self) -> Box<Node> {
+    pub fn parse_return_statement(&mut self) -> Box<Node> {
         self.eat(); // eat `;` token
         if self.at_end() { panic!("Unexpected EOF: expected return statement, got EOF."); };
 
@@ -97,7 +97,7 @@ impl Parser {
         }))
     }
 
-    fn parse_fn_declaration(&mut self) -> Box<Node> {
+    pub fn parse_fn_declaration(&mut self) -> Box<Node> {
         self.eat(); // eat `->` token
 
         let function_name = self.expect_token(VelvetTokenType::Identifier, "Function name expected").literal_value.clone();
@@ -114,9 +114,9 @@ impl Parser {
             }
         }
 
-        self.expect_token(VelvetTokenType::EqArrow, "Expected function return type");
+        self.expect_token(VelvetTokenType::EqArrow, "Expected function return type using =>. Did you mean to define a Snippet? Define it with |-> instead of ->.");
 
-        let return_type = self.expect_token(VelvetTokenType::Identifier, "Expected type after eqarrow").literal_value.clone();
+        let return_type = self.expect_token(VelvetTokenType::Identifier, "Expected type after eqarrow. Did you mean to define a Snippet? Define it with |-> instead of ->.").literal_value.clone();
 
         // parse fn body
         self.expect_token(VelvetTokenType::LBrace, "Expected function body start");
@@ -139,7 +139,7 @@ impl Parser {
         }))
     }
 
-    fn parse_args(&mut self) -> Vec<Box<Node>> {
+    pub fn parse_args(&mut self) -> Vec<Box<Node>> {
         self.expect_token(VelvetTokenType::LParen, "Expected args");
         let args: Vec<Box<Node>> = if self.current().kind == VelvetTokenType::RParen { Vec::new() } else { self.parse_argument_list() };
 
@@ -148,7 +148,7 @@ impl Parser {
         args
     }
 
-    fn parse_argument_list(&mut self) -> Vec<Box<Node>> {
+    pub fn parse_argument_list(&mut self) -> Vec<Box<Node>> {
         let mut args: Vec<Box<Node>> = Vec::new();
         args.push(self.parse_assignment_expr());
         
@@ -160,7 +160,7 @@ impl Parser {
         args
     }
 
-    fn parse_assignment_expr(&mut self) -> Box<Node> {
+    pub fn parse_assignment_expr(&mut self) -> Box<Node> {
         let left = self.parse_comparator_expr();
         if !self.at_end() && self.current().kind == VelvetTokenType::Eq {
             self.eat();
@@ -173,7 +173,7 @@ impl Parser {
         left
     }
 
-    fn parse_comparator_expr(&mut self) -> Box<Node> {
+    pub fn parse_comparator_expr(&mut self) -> Box<Node> {
         if self.at_end() {
             panic!("Unexpected EOF: comparator operator expected");
         }
@@ -199,7 +199,7 @@ impl Parser {
         }))
     }
 
-    fn parse_list_expr(&mut self) -> Box<Node> {
+    pub fn parse_list_expr(&mut self) -> Box<Node> {
         if self.current().kind != VelvetTokenType::LBracket {
             return self.parse_object_expr();
         }
@@ -225,7 +225,7 @@ impl Parser {
         }))
     }
 
-    fn parse_object_expr(&mut self) -> Box<Node> {
+    pub fn parse_object_expr(&mut self) -> Box<Node> {
         if self.current().kind != VelvetTokenType::LBrace {
             return self.parse_additive_expr();
         }
@@ -257,7 +257,7 @@ impl Parser {
 
     // bindm my_counter as i32 = 0
     // bind my_counter as i32 = 0
-    fn parse_var_declaration(&mut self) -> Box<Node> {
+    pub fn parse_var_declaration(&mut self) -> Box<Node> {
         let is_mutable = self.eat().kind == VelvetTokenType::Keywrd_Bindmutable;
         let identifier = self.expect_token(VelvetTokenType::Identifier, "Variable name required").literal_value.clone();
 
@@ -277,11 +277,11 @@ impl Parser {
         }))
     }
 
-    fn parse_expr(&mut self) -> Box<Node> {
+    pub fn parse_expr(&mut self) -> Box<Node> {
         self.parse_assignment_expr()
     }
 
-    fn parse_additive_expr(&mut self) -> Box<Node> {
+    pub fn parse_additive_expr(&mut self) -> Box<Node> {
         let mut left = self.parse_multiplicative_expr();
 
         loop {
@@ -306,7 +306,7 @@ impl Parser {
         left
     }
 
-    fn parse_multiplicative_expr(&mut self) -> Box<Node> {
+    pub fn parse_multiplicative_expr(&mut self) -> Box<Node> {
         let mut left = self.parse_call_member_expr();
 
         loop {
@@ -334,7 +334,7 @@ impl Parser {
         left
     }
 
-    fn parse_call_member_expr(&mut self) -> Box<Node> {
+    pub fn parse_call_member_expr(&mut self) -> Box<Node> {
         let member = self.parse_member_expr();
 
         if !self.at_end() && self.current().kind == VelvetTokenType::LParen {
@@ -344,43 +344,49 @@ impl Parser {
         return member;
     }
 
-    fn parse_member_expr(&mut self) -> Box<Node> {
+    pub fn parse_member_expr(&mut self) -> Box<Node> {
         let mut object = self.parse_primary_expr();
 
-        while !self.at_end() && (self.current().kind == VelvetTokenType::Dot || self.current().kind == VelvetTokenType::LBracket) {
+        while !self.at_end() && 
+            (self.current().kind == VelvetTokenType::Dot || self.current().kind == VelvetTokenType::LBracket) {
+
             let op = self.eat();
 
             if op.kind == VelvetTokenType::Dot {
                 let property = self.parse_primary_expr();
 
                 match property.as_ref() {
-                    Node::Identifier(ident) => {
-                        return Box::new(Node::MemberExpr(MemberExpr {
+                    Node::Identifier(_) => {
+                        object = Box::new(Node::MemberExpr(MemberExpr {
                             object,
                             property,
-                            is_computed: true
+                            is_computed: false,
                         }));
                     }
                     _ => {
-                        panic!("Right-hand of '{}' must be an Identifier, found '{:#?}'", op.literal_value, property);
+                        panic!(
+                            "Right-hand of '.' must be an Identifier, found '{:#?}'",
+                            property
+                        );
                     }
                 }
             } else {
+                // Handle computed property access: object[expr]
                 let property = self.parse_expr();
+                self.expect_token(VelvetTokenType::RBracket, "Expected closing bracket");
 
-                self.expect_token(VelvetTokenType::RParen, "Expected closing parenthesis");
-
-                return Box::new(Node::MemberExpr(MemberExpr {
+                object = Box::new(Node::MemberExpr(MemberExpr {
                     object,
                     property,
-                    is_computed: false
+                    is_computed: true,
                 }));
             }
         }
+
         object
     }
 
-    fn parse_call_expr(&mut self, caller: Box<Node>) -> Box<Node> {
+    pub fn parse_call_expr(&mut self, caller: Box<Node>) -> Box<Node> {
         let mut call_expr = Box::new(Node::CallExpr(CallExpr {
             args: self.parse_args(),
             caller
@@ -393,7 +399,7 @@ impl Parser {
         call_expr
     }
 
-    fn parse_if_statement(&mut self) -> Box<Node> {
+    pub fn parse_if_statement(&mut self) -> Box<Node> {
         let condition = self.parse_comparator_expr();
 
         self.expect_token(VelvetTokenType::LBrace, "Expected body of loop");
@@ -410,7 +416,7 @@ impl Parser {
         }))
     }
 
-    fn parse_while_stmt(&mut self) -> Box<Node> {
+    pub fn parse_while_stmt(&mut self) -> Box<Node> {
         let loop_condition = self.parse_comparator_expr();
 
         self.expect_token(VelvetTokenType::Keywrd_Do, "Expected 'do' for while loop");
@@ -428,7 +434,7 @@ impl Parser {
         }))
     }
 
-    fn parse_for_loop(&mut self) -> Box<Node> {
+    pub fn parse_for_loop(&mut self) -> Box<Node> {
         let left = self.expect_token(VelvetTokenType::Identifier, "Expected identifier for loop");
         self.expect_token(VelvetTokenType::Keywrd_Of, "Expected of");
         let right = self.parse_expr();
@@ -448,7 +454,11 @@ impl Parser {
         }))
     }
 
-    fn parse_primary_expr(&mut self) -> Box<Node> {
+    pub fn parse_snippet_definition(&mut self) -> Box<Node> {
+        return Box::new(Node::StringLiteral(StringLiteral { literal_value: String::from("This is debug; make sure to remove.") }));
+    }
+
+    pub fn parse_primary_expr(&mut self) -> Box<Node> {
         // lowest level
         let tk = self.eat();
 
@@ -474,6 +484,9 @@ impl Parser {
             }
             VelvetTokenType::Keywrd_For => {
                 self.parse_for_loop()
+            }
+            VelvetTokenType::WallArrow => {
+                self.parse_snippet_definition()
             }
             _ => panic!("This token sequence has no applicable parsing path yet: {}", tk.kind)
         }

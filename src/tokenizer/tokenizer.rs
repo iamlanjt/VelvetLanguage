@@ -39,6 +39,21 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
         // Single char mapping
         let mut prefix_literal_value = "".to_owned();
         let token_result: Option<VelvetTokenType> = match current_char {
+            '|' => {
+                match t_peek(&input_characters, tokenizer_index, 1) {
+                    Some('-') => {
+                        match t_peek(&input_characters, tokenizer_index, 2) {
+                            Some('>') => {
+                                tokenizer_index += 2;
+                                prefix_literal_value = "|-".to_owned();
+                                Some(VelvetTokenType::WallArrow)
+                            }
+                            _ => None
+                        }
+                    }
+                    _ => None
+                }
+            }
             '+' => Some(VelvetTokenType::Plus),
             '-' => {
                 match t_peek(&input_characters, tokenizer_index, 1) {
