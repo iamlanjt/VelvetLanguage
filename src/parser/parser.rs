@@ -331,7 +331,10 @@ impl Parser {
             
             // MARKER: Bugx001 fix, `self.parse_primary_expr()` -> `self.parse_additive_expr()`
             // Putting a marker here because this is such a volatile change that future possible bugs relating to this change may be hard to deduce.
-            let right = self.parse_additive_expr();
+
+            // Jul 7 change, `self.parse_additive_expr()` -> `self.parse_call_member_expr()` due to precedence issues. This seems to have fixed them and not caused
+            // any other bugs.
+            let right = self.parse_call_member_expr();
             left = Box::new(Node::BinaryExpr(BinaryExpr {
                 left,
                 right: right,
