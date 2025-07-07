@@ -1,11 +1,19 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
     token_pointer: usize,
     tkn_chain: Vec<VelvetToken>
+}
+
+fn is_node_literal(node: &Node) -> bool {
+    match node {
+        Node::NumericLiteral(l) => true,
+        Node::StringLiteral(s) => true,
+        _ => false
+    }
 }
 
 impl Parser {
@@ -458,6 +466,38 @@ impl Parser {
         return Box::new(Node::StringLiteral(StringLiteral { literal_value: String::from("This is debug; make sure to remove.") }));
     }
 
+    pub fn parse_match_expr(&mut self) -> Box<Node> {
+        let target = self.parse_expr();
+
+        self.expect_token(VelvetTokenType::LBrace, "Expected start of match body");
+        let mut arms: Vec<(Box<Node>, Box<Node>)> = Vec::new();
+        while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
+            let left = self.parse_primary_expr();
+            self.expect_token(VelvetTokenType::EqArrow, "Expected director");
+            let right = self.parse_expr();
+
+            /*
+            if !is_node_literal(&left.as_ref()) {
+                panic!("LHS of Director must be a literal value.");
+            }
+            */
+
+            arms.push((
+                left,
+                right
+            ));
+
+            if !self.at_end() && self.current().kind == VelvetTokenType::Comma {
+                self.eat();
+            }
+        }
+        self.expect_token(VelvetTokenType::RBrace, "Expected end of match statement body");
+        Box::new(Node::MatchExpr(MatchExpr {
+            target,
+            arms
+        }))
+    }
+
     pub fn parse_primary_expr(&mut self) -> Box<Node> {
         // lowest level
         let tk = self.eat();
@@ -487,6 +527,9 @@ impl Parser {
             }
             VelvetTokenType::WallArrow => {
                 self.parse_snippet_definition()
+            }
+            VelvetTokenType::Keywrd_Match => {
+                self.parse_match_expr()
             }
             _ => panic!("This token sequence has no applicable parsing path yet: {}", tk.kind)
         }

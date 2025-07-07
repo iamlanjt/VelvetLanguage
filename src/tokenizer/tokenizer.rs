@@ -25,7 +25,8 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
         ("do", VelvetTokenType::Keywrd_Do),
         ("if", VelvetTokenType::Keywrd_If),
         ("for", VelvetTokenType::Keywrd_For),
-        ("of", VelvetTokenType::Keywrd_Of)
+        ("of", VelvetTokenType::Keywrd_Of),
+        ("match", VelvetTokenType::Keywrd_Match)
     ]);
 
     while tokenizer_index < input_characters.len() {

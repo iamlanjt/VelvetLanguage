@@ -1,9 +1,0 @@
-bind split_example as any = string.split("a b c", " ")
-bindm index as number = 0
-
-for property of split_example do {
-    print("Index", index, "is", property)
-    index = index + 1
-}
-
-print(split_example[1])

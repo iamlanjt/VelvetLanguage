@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MemberExpr, Node, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MatchExpr, MemberExpr, Node, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
 
 pub struct Interpreter {
     ast: Vec<Box<Node>>,
@@ -87,10 +87,29 @@ impl Interpreter {
             Node::MemberExpr(mem) => {
                 self.evaluate_member_expr(mem, env)
             }
+            Node::MatchExpr(mexpr) => {
+                self.evaluate_match_expr(mexpr, env)
+            }
             _ => {
                 panic!("Evaluation match fault:\nThis node has not been set up for execution yet!\n\n{:#?}\n\n", node)
             }
         }
+    }
+
+    fn evaluate_match_expr(&mut self, mexpr: &MatchExpr, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        // Target is the LHS of the match expr, or the expression directly after the `match` keyword and before the match body.
+        let target = self.evaluate(mexpr.target.clone(), Rc::clone(&env));
+        
+        for arm in &mexpr.arms {
+            let left = self.evaluate(arm.0.clone(), Rc::clone(&env));
+
+            let comparison = target.compare(&left, "==");
+            if comparison.is_ok() && comparison.unwrap() == true {
+                return self.evaluate(arm.1.clone(), Rc::clone(&env));
+            }
+        }
+
+        return Box::new(RuntimeVal::NullVal(NullVal {  }));
     }
 
     fn evaluate_member_expr(&mut self, mem: &MemberExpr, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
@@ -127,6 +146,19 @@ impl Interpreter {
                     }
                 } else {
                     panic!("Invalid index access on list: {}", property_key);
+                }
+            }
+            RuntimeVal::StringVal(ref strvl) => {
+                if let Ok(idx) = property_key.parse::<usize>() {
+                    if idx > strvl.value.len() {
+                        panic!("Index out-of-bounds on string");
+                    } else {
+                        return Box::new(RuntimeVal::StringVal(StringVal {
+                            value: strvl.value.chars().nth(idx).unwrap().try_into().unwrap()
+                        }))
+                    }
+                } else {
+                    panic!("Invalid index access on string: {}", property_key);
                 }
             }
             _ => {

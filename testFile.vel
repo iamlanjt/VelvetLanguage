@@ -1,0 +1,17 @@
+bind my_source_code as string = "1+2/3*4"
+
+bind NUMBER_CONSTANT as string = "Number"
+
+for char of string.split(my_source_code, "") do {
+    bind token_type as string = match char {
+        "1" => NUMBER_CONSTANT,
+        "2" => NUMBER_CONSTANT,
+        "3" => NUMBER_CONSTANT,
+        "4" => NUMBER_CONSTANT,
+        "+" => "Operator",
+        "/" => "Operator",
+        "*" => "Operator"
+    }
+
+    print(char, "as TokenType", token_type)
+}

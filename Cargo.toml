@@ -1,4 +1,7 @@
 [package]
 name = "velvet"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
+
+[dependencies]
+rand = "0.9.1"

@@ -45,6 +45,13 @@ impl RuntimeVal {
                 };
                 Ok(result)
             }
+            (RuntimeVal::StringVal(s), RuntimeVal::StringVal(s2)) => {
+                let result = match op {
+                    "==" => &s.value == &s2.value,
+                    _ => return Err(format!("Operator '{}' not supported for strings", op))
+                };
+                Ok(result)
+            }
             _ => Err(format!(
                 "Unsupported comparison between {:?} and {:?}",
                 self, other

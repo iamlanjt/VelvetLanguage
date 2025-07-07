@@ -20,7 +20,8 @@ pub enum Node {
     WhileStmt(WhileStmt),
     StringLiteral(StringLiteral),
     IfStmt(IfStmt),
-    Iterator(Iterator)
+    Iterator(Iterator),
+    MatchExpr(MatchExpr)
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +98,12 @@ pub struct VarDeclaration {
 pub struct CallExpr {
     pub args: Vec<Box<Node>>,
     pub caller: Box<Node>
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchExpr {
+    pub target: Box<Node>,
+    pub arms: Vec<(Box<Node>, Box<Node>)>
 }
 
 #[derive(Debug, Clone)]

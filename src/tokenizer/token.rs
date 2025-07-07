@@ -38,10 +38,11 @@ pub enum VelvetTokenType {
     Keywrd_If,
     Keywrd_For,
     Keywrd_Of,
-    WallArrow
+    WallArrow,
+    Keywrd_Match
 }
 
-const VTOK_EQUIV: [&str; 36] = [
+const VTOK_EQUIV: [&str; 37] = [
     "Plus",
     "Minus",
     "Asterisk",
@@ -77,7 +78,8 @@ const VTOK_EQUIV: [&str; 36] = [
     "Keywrd:If",
     "Keywrd:For",
     "Keywrd:Of",
-    "WallArrow"
+    "WallArrow",
+    "Keywrd:Match"
 ];
 
 impl fmt::Display for VelvetTokenType {

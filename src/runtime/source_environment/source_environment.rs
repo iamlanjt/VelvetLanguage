@@ -1,6 +1,8 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::runtime::values::{BoolVal, InternalFunctionVal, ListVal, NullVal, ObjectVal, RuntimeVal, StringVal};
+use crate::{parser::nodetypes::NumericLiteral, runtime::values::{BoolVal, InternalFunctionVal, ListVal, NullVal, NumberVal, ObjectVal, RuntimeVal, StringVal}};
+
+use rand::Rng;
 
 #[derive(Debug, Clone)]
 pub struct EnvVar {
@@ -143,6 +145,71 @@ impl SourceEnv {
                                         })
                                     ).collect()
                                 })
+                            })
+                        })),
+                        ("len".to_string(), RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: String::from("len"),
+                            internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                                let first = args.first().expect("len expects one argument");
+
+                                match first {
+                                    RuntimeVal::StringVal(s) => {
+                                        return RuntimeVal::NumberVal(NumberVal {
+                                            value: s.value.len().try_into().unwrap()
+                                        })
+                                    }
+                                    _ => {
+                                        panic!("Expected string type as an argument");
+                                    }
+                                }
+                            })
+                        }))
+                    ])
+                })
+            }),
+            ("rand".to_string(), EnvVar {
+                var_type: String::from("internal_object"),
+                is_mutable: false,
+                value: RuntimeVal::ObjectVal(ObjectVal {
+                    values: HashMap::from([
+                        ("num".to_string(), RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: String::from("num"),
+                            internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                                let mut lower_bound: i32 = 0;
+                                let mut upper_bound: i32 = 100;
+
+                                let mut set = false;
+                                if let Some(x) = args.get(0) {
+                                    match x {
+                                        RuntimeVal::NumberVal(n) => {
+                                            lower_bound = n.value.try_into().unwrap();
+                                        }
+                                        _ => {}
+                                    }
+                                    set = true;
+                                }
+                                if let Some(x) = args.get(1) {
+                                    match x {
+                                        RuntimeVal::NumberVal(n) => {
+                                            upper_bound = n.value.try_into().unwrap();
+                                        }
+                                        _ => {}
+                                    }
+                                } else if set {
+                                    upper_bound = lower_bound;
+                                    lower_bound = 0;
+                                }
+                                
+                                let mut rng = rand::rng();
+                                let rand = rng.random_range(lower_bound..upper_bound).try_into().unwrap();
+                                return RuntimeVal::NumberVal(NumberVal { value: rand });
+                            })
+                        })),
+                        ("bool".to_string(), RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: String::from("bool"),
+                            internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                                let mut rng = rand::rng();
+                                return RuntimeVal::BoolVal(BoolVal { value: rng.random_bool(50.0) });
                             })
                         }))
                     ])
