@@ -37,6 +37,9 @@ impl Interpreter {
                     value: slit.literal_value.clone()
                 }))
             }
+            Node::BoolLiteral(bl) => {
+                Box::new(RuntimeVal::BoolVal(BoolVal { value: bl.literal_value }))
+            }
             Node::Return(ret) => {
                 Box::new(RuntimeVal::ReturnVal(ReturnVal {
                     value: ret.return_statement.clone()
@@ -103,9 +106,35 @@ impl Interpreter {
         for arm in &mexpr.arms {
             let left = self.evaluate(arm.0.clone(), Rc::clone(&env));
 
-            let comparison = target.compare(&left, "==");
-            if comparison.is_ok() && comparison.unwrap() == true {
-                return self.evaluate(arm.1.clone(), Rc::clone(&env));
+            match left.as_ref() {
+                RuntimeVal::FunctionVal(fv) => {
+                    let left_result = self.evaluate_call_expr(&CallExpr {
+                        args: Vec::from([
+                            mexpr.target.clone()
+                        ]),
+                        caller: Box::new(*arm.0.clone())
+                    }, Rc::clone(&env));
+                    if left_result.compare(&RuntimeVal::BoolVal(BoolVal { value: true }), "==").unwrap() {
+                        return self.evaluate(arm.1.clone(), Rc::clone(&env));
+                    }
+                }
+                RuntimeVal::InternalFunctionVal(fv) => {
+                    let left_result = self.evaluate_call_expr(&CallExpr {
+                        args: Vec::from([
+                            mexpr.target.clone()
+                        ]),
+                        caller: Box::new(*arm.0.clone())
+                    }, Rc::clone(&env));
+                    if left_result.compare(&RuntimeVal::BoolVal(BoolVal { value: true }), "==").unwrap() {
+                        return self.evaluate(arm.1.clone(), Rc::clone(&env));
+                    }
+                }
+                _ => {
+                    let comparison = target.compare(&left, "==");
+                    if comparison.is_ok() && comparison.unwrap() == true {
+                        return self.evaluate(arm.1.clone(), Rc::clone(&env));
+                    }
+                }
             }
         }
 

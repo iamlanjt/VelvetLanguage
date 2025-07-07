@@ -52,6 +52,9 @@ impl RuntimeVal {
                 };
                 Ok(result)
             }
+            (RuntimeVal::NullVal(n), RuntimeVal::BoolVal(b)) => {
+                Ok(false)
+            }
             _ => Err(format!(
                 "Unsupported comparison between {:?} and {:?}",
                 self, other

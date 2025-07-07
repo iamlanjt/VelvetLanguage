@@ -21,7 +21,8 @@ pub enum Node {
     StringLiteral(StringLiteral),
     IfStmt(IfStmt),
     Iterator(Iterator),
-    MatchExpr(MatchExpr)
+    MatchExpr(MatchExpr),
+    BoolLiteral(BoolLiteral)
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +118,11 @@ pub struct MemberExpr {
 #[derive(Debug, Clone)]
 pub struct NumericLiteral {
     pub literal_value: String
+}
+
+#[derive(Debug, Clone)]
+pub struct BoolLiteral {
+    pub literal_value: bool
 }
 
 #[derive(Debug, Clone)]

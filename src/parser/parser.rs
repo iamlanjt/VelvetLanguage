@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, BoolLiteral, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
@@ -472,7 +472,7 @@ impl Parser {
         self.expect_token(VelvetTokenType::LBrace, "Expected start of match body");
         let mut arms: Vec<(Box<Node>, Box<Node>)> = Vec::new();
         while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
-            let left = self.parse_primary_expr();
+            let left = self.parse_expr();
             self.expect_token(VelvetTokenType::EqArrow, "Expected director");
             let right = self.parse_expr();
 
@@ -506,9 +506,19 @@ impl Parser {
             VelvetTokenType::Number => Box::new(Node::NumericLiteral(NumericLiteral {
                 literal_value: tk.literal_value.clone()
             })),
-            VelvetTokenType::Identifier => Box::new(Node::Identifier(Identifier {
-                identifier_name: tk.literal_value.clone()
-            })),
+            VelvetTokenType::Identifier => {
+                if tk.literal_value == "true" {
+                    Box::new(Node::BoolLiteral(BoolLiteral {
+                        literal_value: true
+                    }))
+                } else if tk.literal_value == "false" {
+                    Box::new(Node::BoolLiteral(BoolLiteral { literal_value: false }))
+                } else {
+                    Box::new(Node::Identifier(Identifier {
+                        identifier_name: tk.literal_value.clone()
+                    }))
+                }
+            },
             VelvetTokenType::Str => Box::new(Node::StringLiteral(StringLiteral {
                 literal_value: tk.literal_value.clone()
             })),

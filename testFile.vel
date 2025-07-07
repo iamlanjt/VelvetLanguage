@@ -1,17 +1,27 @@
-bind my_source_code as string = "1+2/3*4"
+bind my_source as string = "1 * 2 / 4"
 
-bind NUMBER_CONSTANT as string = "Number"
+-> is_space(char) => bool {
+    ; char == " "
+}
+-> is_operator(char) => bool {
+    bind result as bool = match char {
+        "+" => true,
+        "-" => true,
+        "*" => true,
+        "/" => true
+    }
+    if result == true {
+        ; result
+    }
+    ; false
+}
 
-for char of string.split(my_source_code, "") do {
+for char of string.split(my_source, "") do {
     bind token_type as string = match char {
-        "1" => NUMBER_CONSTANT,
-        "2" => NUMBER_CONSTANT,
-        "3" => NUMBER_CONSTANT,
-        "4" => NUMBER_CONSTANT,
-        "+" => "Operator",
-        "/" => "Operator",
-        "*" => "Operator"
+        is_space => "[]",
+        is_operator => "Operator",
+        string.is_numeric => "Number"
     }
 
-    print(char, "as TokenType", token_type)
+    print(char, "is a Token<", token_type, ">")
 }

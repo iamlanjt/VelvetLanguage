@@ -163,6 +163,21 @@ impl SourceEnv {
                                     }
                                 }
                             })
+                        })),
+                        ("is_numeric".to_string(), RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: String::from("is_numeric"),
+                            internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                                let first = args.first().expect("is_numeric expects one argument");
+
+                                match first {
+                                    RuntimeVal::StringVal(s) => {
+                                        return RuntimeVal::BoolVal(BoolVal { value: s.value.parse::<f64>().is_ok() })
+                                    }
+                                    _ => {
+                                        panic!("Expected string type as an argument");
+                                    }
+                                }
+                            })
                         }))
                     ])
                 })
