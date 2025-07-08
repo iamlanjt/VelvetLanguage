@@ -123,6 +123,16 @@ pub struct ListVal {
     pub values: Vec<RuntimeVal>
 }
 
+impl ListVal {
+    pub fn push(&mut self, value: RuntimeVal) {
+        self.values.push(value);
+    }
+
+    pub fn len(&mut self) -> usize {
+        self.values.len()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ObjectVal {
     pub values: HashMap<String, RuntimeVal>

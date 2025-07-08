@@ -1,0 +1,23 @@
+|-> assert_type(target, type, message?) {
+    bind target_type as string = itypeof(target)
+    if target_type == type {
+        ; true
+    }
+    print("Assertion failed on", target)
+    print("Expected type", type, " | Received", target_type)
+    print(message ! "")
+
+    process.exit(0 - 1)
+}
+
+|-> map_list(list, fn) {
+    assert_type$(list, "list")
+    assert_type$(fn, "function")
+
+    bindm final as any = []
+    for obj of list do {
+        bind result as bool = fn(obj)
+        final.push(result)
+    }
+    ; final
+}

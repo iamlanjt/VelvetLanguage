@@ -1,18 +1,20 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{any::Any, cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MatchExpr, MemberExpr, Node, NullishCoalescing, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MatchExpr, MemberExpr, Node, NullishCoalescing, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, InternalFunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
 
 pub struct Interpreter {
     ast: Vec<Box<Node>>,
-    pointer: usize,
 }
 
 impl Interpreter {
     pub fn new(ast: Vec<Box<Node>>) -> Self {
         Self {
-            ast,
-            pointer: 0
+            ast
         }
+    }
+
+    fn auto_reassign_methods() -> &'static [&'static str] {
+        &["push"]
     }
 
     pub fn evaluate_body(&mut self, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
@@ -103,10 +105,17 @@ impl Interpreter {
                 self.evaluate_nullish_coalescing(n, env)
             }
             Node::Block(block) => {
-                let new_env = SourceEnv::create_global(false);
-                let last = Box::new(RuntimeVal::NullVal(NullVal {  }));
+                let mut last = Box::new(RuntimeVal::NullVal(NullVal {  }));
+                let sub_environment = Rc::new(RefCell::new(SourceEnv::new(Some(Rc::clone(&env)))));
                 for sub_node in &block.body {
-                    self.evaluate(sub_node.clone(), Rc::clone(&new_env));
+                    last = self.evaluate(sub_node.clone(), Rc::clone(&sub_environment));
+                    match *last {
+                        RuntimeVal::ReturnVal(r) => {
+                            last = self.evaluate(r.value, Rc::clone(&sub_environment));
+                            break
+                        }
+                        _ => {}
+                    }
                 }
                 last
             }
@@ -169,7 +178,7 @@ impl Interpreter {
     }
 
     fn evaluate_member_expr(&mut self, mem: &MemberExpr, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
-        let base_val = match *mem.object {
+        let mut base_val = match *mem.object {
             Node::Identifier(ref ident) => self.evaluate_identifier(ident, Rc::clone(&env)),
             Node::MemberExpr(ref inner) => self.evaluate_member_expr(inner, Rc::clone(&env)),
             _ => {
@@ -194,14 +203,34 @@ impl Interpreter {
                 }
             }
             RuntimeVal::ListVal(ref list) => {
-                if let Ok(idx) = property_key.parse::<usize>() {
-                    if let Some(val) = list.values.get(idx) {
-                        return Box::new(val.clone());
-                    } else {
-                        panic!("Index {} is out of bounds!", idx);
+                let list_rc = Rc::new(RefCell::new(list.clone()));
+
+                let list_for_closure = Rc::clone(&list_rc);
+                
+                match property_key.as_str() {
+                    "push" => {
+                        let list_ref = Rc::clone(&list_rc);
+
+                        return Box::new(RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: "push".into(),
+                            internal_callback: Rc::new(move |args| {
+                                let mut borrowed = list_ref.borrow_mut();
+                                borrowed.values.extend(args);
+                                RuntimeVal::ListVal(ListVal { values: borrowed.to_owned().values })
+                            }),
+                        }));
                     }
-                } else {
-                    panic!("Invalid index access on list: {}", property_key);
+                    _ => {
+                        if let Ok(idx) = property_key.parse::<usize>() {
+                            if let Some(val) = list.values.get(idx) {
+                                return Box::new(val.clone());
+                            } else {
+                                panic!("Index {} is out of bounds!", idx);
+                            }
+                        } else {
+                            panic!("Invalid index access on list: {}", property_key);
+                        }
+                    }
                 }
             }
             RuntimeVal::StringVal(ref strvl) => {
@@ -307,6 +336,23 @@ impl Interpreter {
                     new_args.push(*self.evaluate(Box::new(*arg.clone()), Rc::clone(&env)));
                 }
                 let internal_result = (r#fn.internal_callback)(new_args);
+                if Self::auto_reassign_methods().contains(&r#fn.fn_name.as_str()) {
+                    match *cexpr.caller.clone() {
+                        Node::Identifier(ident) => {
+                            env.borrow_mut().attempt_assignment(ident.identifier_name, internal_result.clone());
+                        }
+                        Node::MemberExpr(member_expr) => {
+                            if let Node::Identifier(obj_ident) = *member_expr.object {
+                                env.borrow_mut().attempt_assignment(obj_ident.identifier_name, internal_result.clone());
+                            } else {
+                                panic!("Auto-reassign for complex member expressions not implemented");
+                            }
+                        }
+                        _ => {
+                            panic!("Auto-reassign is only supported on identifiers or member expressions");
+                        }
+                    }
+                }
                 return Box::new(internal_result);
             }
             _ => {

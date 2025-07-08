@@ -1,0 +1,9 @@
+|-> clamp(val, min, max) {
+    if val < min {
+        ; min
+    }
+    if val > max {
+        ; max
+    }
+    ; val
+}

@@ -68,6 +68,18 @@ impl SourceEnv {
                 var_type: String::from("internal_fn"),
                 is_mutable: false
             }),
+            /*
+            ("list_len".to_string(), EnvVar {
+                value: RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                    fn_name: "list_len".to_string(),
+                    internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                        // if let Some()
+                    }),
+                }),
+                var_type: "internal_fn".to_string(),
+                is_mutable: false
+            }),
+            */
             ("itypeof".to_string(), EnvVar {
                 value: RuntimeVal::InternalFunctionVal(InternalFunctionVal {
                     fn_name: "itypeof".to_string(),
@@ -81,6 +93,7 @@ impl SourceEnv {
                                 RuntimeVal::NumberVal(n) => "number",
                                 RuntimeVal::ReturnVal(r) => "return",
                                 RuntimeVal::StringVal(s) => "string",
+                                RuntimeVal::ListVal(l) => "list",
                                 _ => "unknown"
                             };
                             RuntimeVal::StringVal(StringVal { value: internal_type.to_string() })

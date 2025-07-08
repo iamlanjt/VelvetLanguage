@@ -507,6 +507,16 @@ impl Parser {
                 body: body.iter().map(|stmt| Self::substitute_snippet_vars(stmt, bindings)).collect()
             })),
 
+            Node::Iterator(Iterator { left, right, body }) => {
+                let new_right = Self::substitute_snippet_vars(right, bindings);
+                let new_body = body.iter().map(|stmt| Self::substitute_snippet_vars(stmt, bindings)).collect();
+                Box::new(Node::Iterator(Iterator {
+                    left: left.clone(), // assume left is a plain identifier token
+                    right: new_right,
+                    body: new_body
+                }))
+            }
+
             Node::MatchExpr(MatchExpr { target, arms }) => Box::new(Node::MatchExpr(MatchExpr {
                 target: Self::substitute_snippet_vars(target, bindings),
                 arms: arms.iter().map(|(l, r)| (
@@ -530,6 +540,11 @@ impl Parser {
                     k.clone(),
                     Self::substitute_snippet_vars(v, bindings)
                 )).collect()
+            })),
+            Node::Comparator(Comparator { lhs, rhs, op }) => Box::new(Node::Comparator(Comparator {
+                lhs: Self::substitute_snippet_vars(lhs, bindings),
+                rhs: Self::substitute_snippet_vars(rhs, bindings),
+                op: op.to_string()
             })),
 
             // If it's a literal or something that doesn't contain other nodes, just clone it
@@ -599,7 +614,7 @@ impl Parser {
     }
 
     pub fn parse_if_statement(&mut self) -> Box<Node> {
-        let condition = self.parse_comparator_expr();
+        let condition = self.parse_stmt();
 
         self.expect_token(VelvetTokenType::LBrace, "Expected body of loop");
         
