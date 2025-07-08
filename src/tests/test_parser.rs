@@ -6,7 +6,7 @@ use crate::parser::{nodetypes::{BinaryExpr, Node}, parser::Parser};
 // Unit tests: test all nodes
 #[test]
 fn parser_unit_node_binary_expr() {
-    let mut parser = Parser::new("15 * 11 / 1 + 2");
+    let mut parser = Parser::new("15 * 11 / 1 + 2", false);
     let ast = parser.produce_ast();
 
     assert_eq!(ast.len(), 1, "BinaryExprs should be recursive; found multiple top-level nodes in one BinaryExpression unit test.");
@@ -53,7 +53,7 @@ fn parser_unit_node_binary_expr() {
 
 #[test]
 fn parser_unit_node_while_stmt_comparator() {
-    let ast = Parser::new("while CONDITION_LEFT == CONDITION_RIGHT do {}").produce_ast();
+    let ast = Parser::new("while CONDITION_LEFT == CONDITION_RIGHT do {}", false).produce_ast();
     
     assert_eq!(ast.len(), 1);
     match &**ast.first().unwrap() {
@@ -83,7 +83,7 @@ fn parser_unit_node_while_stmt_comparator() {
 
 #[test]
 fn parser_unit_node_while_stmt_truthy() {
-    let ast = Parser::new("while CONDITION_LEFT do {}").produce_ast();
+    let ast = Parser::new("while CONDITION_LEFT do {}", false).produce_ast();
 
     assert_eq!(ast.len(), 1, "Expected AST size to be of 1 node for while statement");
     match &**ast.first().unwrap() {
@@ -101,7 +101,7 @@ fn parser_unit_node_while_stmt_truthy() {
 
 #[test]
 fn parser_unit_node_while_stmt_body() {
-    let ast = Parser::new("while CONDITION_LEFT do { print(CONDITION_LEFT) }").produce_ast();
+    let ast = Parser::new("while CONDITION_LEFT do { print(CONDITION_LEFT) }", false).produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &**ast.first().unwrap() {
@@ -118,7 +118,7 @@ fn parser_unit_node_while_stmt_body() {
 
 #[test]
 fn parser_unit_node_string_literal() {
-    let ast = Parser::new("'Hello World'").produce_ast();
+    let ast = Parser::new("'Hello World'", false).produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &**ast.first().unwrap() {
@@ -131,7 +131,7 @@ fn parser_unit_node_string_literal() {
 
 #[test]
 fn parser_unit_node_object_lieral() {
-    let ast = Parser::new("{ a: { sub_object: true }, b: 2 * 3 }").produce_ast();
+    let ast = Parser::new("{ a: { sub_object: true }, b: 2 * 3 }", false).produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &**ast.first().unwrap() {
@@ -162,7 +162,7 @@ fn parser_unit_node_object_lieral() {
 
 #[test]
 fn parser_unit_node_list_literal() {
-    let ast = Parser::new("[1, 2, ['sub', 5]]").produce_ast();
+    let ast = Parser::new("[1, 2, ['sub', 5]]", false).produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &**ast.first().unwrap() {
@@ -200,7 +200,7 @@ fn parser_integration_member_cases() {
         "parent[computed_property[sub_computed_property]]"
     ];
     for c in cases {
-        let mut parser = Parser::new(c);
+        let mut parser = Parser::new(c, false);
         parser.produce_ast();
     }
 }

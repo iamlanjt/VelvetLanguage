@@ -23,6 +23,10 @@ pub enum RuntimeVal {
 }
 
 impl RuntimeVal {
+    pub fn is_null(&self) -> bool {
+        matches!(self, RuntimeVal::NullVal(_))
+    }
+    
     pub fn compare(&self, other: &RuntimeVal, op: &str) -> Result<bool, String> {
         match (self, other) {
             (RuntimeVal::NumberVal(l), RuntimeVal::NumberVal(r)) => {

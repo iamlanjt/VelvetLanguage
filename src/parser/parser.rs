@@ -1,11 +1,12 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, BoolLiteral, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, Node, NumericLiteral, ObjectLiteral, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, AstSnippet, BinaryExpr, Block, BoolLiteral, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, NoOpNode, Node, NullLiteral, NullishCoalescing, NumericLiteral, ObjectLiteral, OptionalArg, Return, SnippetParam, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
     token_pointer: usize,
-    tkn_chain: Vec<VelvetToken>
+    tkn_chain: Vec<VelvetToken>,
+    ast_snippets: Vec<AstSnippet>
 }
 
 fn is_node_literal(node: &Node) -> bool {
@@ -17,12 +18,13 @@ fn is_node_literal(node: &Node) -> bool {
 }
 
 impl Parser {
-    pub fn new(input: &str) -> Self {
-        let tokenized_result = tokenize(input);
+    pub fn new(input: &str, inject_stdlib_snippets: bool) -> Self {
+        let tokenized_result = tokenize(input, inject_stdlib_snippets);
         Self {
             tokens: tokenized_result,
             token_pointer: 0,
-            tkn_chain: Vec::new()
+            tkn_chain: Vec::new(),
+            ast_snippets: Vec::new()
         }
     }
 
@@ -105,6 +107,40 @@ impl Parser {
         }))
     }
 
+    pub fn parse_snippet_definition(&mut self) {
+        let snippet_name = self.expect_token(VelvetTokenType::Identifier, "Expected snippet name");
+        let args = self.parse_args();
+        let mut new_args: Vec<SnippetParam> = Vec::new();
+        
+        for arg in args {
+            match *arg {
+                Node::Identifier(ident) => {
+                    new_args.push(SnippetParam { name: ident.identifier_name, is_optional: false });
+                }
+                Node::OptionalArg(opt_arg) => {
+                    match *opt_arg.arg {
+                        Node::Identifier(inner_ident) => {
+                            new_args.push(SnippetParam { name: inner_ident.identifier_name, is_optional: true })
+                        }
+                        _ => panic!("Attempt to declare optional Snippet Arg as non-identifier")
+                    }
+                }
+                _ => panic!("Attempt to declare Snippet Arg as non-identifier")
+            }
+        }
+
+        self.expect_token(VelvetTokenType::LBrace, "Expected Snippet body");
+        let mut body: Vec<Box<Node>> = Vec::new();
+
+        while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
+            body.push(self.parse_stmt())
+        }
+
+        self.expect_token(VelvetTokenType::RBrace, "Expected end of Snippet body");
+
+        self.ast_snippets.push(AstSnippet { name: snippet_name.literal_value.to_string(), args: new_args, body: body });
+    }
+
     pub fn parse_fn_declaration(&mut self) -> Box<Node> {
         self.eat(); // eat `->` token
 
@@ -162,14 +198,20 @@ impl Parser {
         
         while !self.at_end() && self.current().kind == VelvetTokenType::Comma {
             self.eat();
-            args.push(self.parse_assignment_expr());
+            let to_push = self.parse_assignment_expr();
+            if !self.at_end() && self.current().kind == VelvetTokenType::QuestionMark {
+                self.eat();
+                args.push(Box::new(Node::OptionalArg(OptionalArg { arg: to_push })));
+            } else {
+                args.push(to_push);
+            }
         }
 
         args
     }
 
     pub fn parse_assignment_expr(&mut self) -> Box<Node> {
-        let left = self.parse_comparator_expr();
+        let left = self.parse_nullish_expr();
         if !self.at_end() && self.current().kind == VelvetTokenType::Eq {
             self.eat();
             let value = self.parse_assignment_expr();
@@ -178,6 +220,22 @@ impl Parser {
                 value
             }))
         }
+        left
+    }
+
+    pub fn parse_nullish_expr(&mut self) -> Box<Node> {
+        let mut left = self.parse_comparator_expr();
+
+        while !self.at_end() && self.current().kind == VelvetTokenType::Exclaimation {
+            self.eat();
+
+            let right = self.parse_comparator_expr();
+            left = Box::new(Node::NullishCoalescing(NullishCoalescing {
+                left,
+                right,
+            }));
+        }
+
         left
     }
 
@@ -397,7 +455,137 @@ impl Parser {
         object
     }
 
+    fn substitute_snippet_vars(node: &Box<Node>, bindings: &HashMap<String, Box<Node>>) -> Box<Node> {
+        match node.as_ref() {
+            Node::Identifier(Identifier { identifier_name }) => {
+                if let Some(replacement) = bindings.get(identifier_name) {
+                    return replacement.clone();
+                }
+                Box::new(Node::Identifier(Identifier {
+                    identifier_name: identifier_name.clone()
+                }))
+            }
+
+            Node::CallExpr(CallExpr { caller, args }) => Box::new(Node::CallExpr(CallExpr {
+                caller: Self::substitute_snippet_vars(caller, bindings),
+                args: args.iter().map(|arg| Self::substitute_snippet_vars(arg, bindings)).collect(),
+            })),
+
+            Node::BinaryExpr(BinaryExpr { left, right, op }) => Box::new(Node::BinaryExpr(BinaryExpr {
+                left: Self::substitute_snippet_vars(left, bindings),
+                right: Self::substitute_snippet_vars(right, bindings),
+                op: op.clone(),
+            })),
+
+            Node::NullishCoalescing(NullishCoalescing { left, right }) => Box::new(Node::NullishCoalescing(NullishCoalescing {
+                left: Self::substitute_snippet_vars(left, bindings),
+                right: Self::substitute_snippet_vars(right, bindings),
+            })),
+
+            Node::Return(Return { return_statement }) => Box::new(Node::Return(Return {
+                return_statement: Self::substitute_snippet_vars(return_statement, bindings),
+            })),
+
+            Node::VarDeclaration(VarDeclaration { is_mutable, var_identifier, var_type, var_value }) => Box::new(Node::VarDeclaration(VarDeclaration {
+                is_mutable: *is_mutable,
+                var_identifier: var_identifier.clone(),
+                var_type: var_type.clone(),
+                var_value: Self::substitute_snippet_vars(var_value, bindings),
+            })),
+
+            Node::Block(Block { body }) => Box::new(Node::Block(Block {
+                body: body.iter().map(|stmt| Self::substitute_snippet_vars(stmt, bindings)).collect()
+            })),
+
+            Node::IfStmt(IfStmt { condition, body }) => Box::new(Node::IfStmt(IfStmt {
+                condition: Self::substitute_snippet_vars(condition, bindings),
+                body: body.iter().map(|stmt| Self::substitute_snippet_vars(stmt, bindings)).collect()
+            })),
+
+            Node::WhileStmt(WhileStmt { condition, body }) => Box::new(Node::WhileStmt(WhileStmt {
+                condition: Self::substitute_snippet_vars(condition, bindings),
+                body: body.iter().map(|stmt| Self::substitute_snippet_vars(stmt, bindings)).collect()
+            })),
+
+            Node::MatchExpr(MatchExpr { target, arms }) => Box::new(Node::MatchExpr(MatchExpr {
+                target: Self::substitute_snippet_vars(target, bindings),
+                arms: arms.iter().map(|(l, r)| (
+                    Self::substitute_snippet_vars(l, bindings),
+                    Self::substitute_snippet_vars(r, bindings)
+                )).collect(),
+            })),
+
+            Node::MemberExpr(MemberExpr { object, property, is_computed }) => Box::new(Node::MemberExpr(MemberExpr {
+                object: Self::substitute_snippet_vars(object, bindings),
+                property: Self::substitute_snippet_vars(property, bindings),
+                is_computed: *is_computed,
+            })),
+
+            Node::ListLiteral(ListLiteral { props }) => Box::new(Node::ListLiteral(ListLiteral {
+                props: props.iter().map(|p| Self::substitute_snippet_vars(p, bindings)).collect()
+            })),
+
+            Node::ObjectLiteral(ObjectLiteral { props }) => Box::new(Node::ObjectLiteral(ObjectLiteral {
+                props: props.iter().map(|(k, v)| (
+                    k.clone(),
+                    Self::substitute_snippet_vars(v, bindings)
+                )).collect()
+            })),
+
+            // If it's a literal or something that doesn't contain other nodes, just clone it
+            other => Box::new(other.clone())
+        }
+    }
+
+
+    fn expand_snippet_invocation(&mut self, snippet_name: String) -> Box<Node> {
+        let snippet_name_trimmed = snippet_name.trim_end_matches('$');
+
+        let snippet_opt = self.ast_snippets.iter()
+            .find(|s| s.name == snippet_name_trimmed)
+            .cloned();
+
+        let snippet = snippet_opt
+            .expect(&format!("Snippet '{}' not found", snippet_name_trimmed));
+
+        let call_args = self.parse_args();
+
+        if call_args.len() > snippet.args.len() {
+            panic!("Too many arguments provided to snippet '{}'", snippet_name_trimmed);
+        }
+
+        let mut arg_bindings: HashMap<String, Box<Node>> = HashMap::new();
+
+        for (i, param) in snippet.args.iter().enumerate() {
+            let arg_val = call_args.get(i).cloned().unwrap_or_else(|| {
+                if param.is_optional {
+                    Box::new(Node::NullLiteral(NullLiteral))
+                } else {
+                    panic!("Missing required argument '{}' in snippet '{}'", param.name, snippet_name_trimmed)
+                }
+            });
+
+            arg_bindings.insert(param.name.clone(), arg_val);
+        }
+
+        let mut new_body = Vec::new();
+        for stmt in &snippet.body {
+            let substituted = Self::substitute_snippet_vars(stmt, &arg_bindings);
+            new_body.push(substituted);
+        }
+
+        Box::new(Node::Block(Block {
+            body: new_body
+        }))
+    }
+
     pub fn parse_call_expr(&mut self, caller: Box<Node>) -> Box<Node> {
+        if let Node::Identifier(Identifier { identifier_name }) = caller.as_ref() {
+            if identifier_name.ends_with('$') {
+                return self.expand_snippet_invocation(identifier_name.clone());
+            }
+        }
+
         let mut call_expr = Box::new(Node::CallExpr(CallExpr {
             args: self.parse_args(),
             caller
@@ -463,10 +651,6 @@ impl Parser {
             right,
             body
         }))
-    }
-
-    pub fn parse_snippet_definition(&mut self) -> Box<Node> {
-        return Box::new(Node::StringLiteral(StringLiteral { literal_value: String::from("This is debug; make sure to remove.") }));
     }
 
     pub fn parse_match_expr(&mut self) -> Box<Node> {
@@ -539,7 +723,8 @@ impl Parser {
                 self.parse_for_loop()
             }
             VelvetTokenType::WallArrow => {
-                self.parse_snippet_definition()
+                self.parse_snippet_definition();
+                return Box::new(Node::NoOpNode(NoOpNode {}))
             }
             VelvetTokenType::Keywrd_Match => {
                 self.parse_match_expr()

@@ -31,7 +31,7 @@ fn tokenizer_unit_single_char() {
     ]);
 
     for unit in &test_characters {
-        let results = tokenize(&unit.0.to_string());
+        let results = tokenize(&unit.0.to_string(), false);
 
         assert_eq!(results.len(), 1);
 
@@ -60,7 +60,7 @@ fn tokenizer_unit_multi_char() {
     ]);
 
     for unit in &test_phrases {
-        let result = tokenize(unit.0);
+        let result = tokenize(unit.0, false);
         
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some());
@@ -86,7 +86,7 @@ fn tokenizer_unit_reserved_keywords() {
     ]);
 
     for tkn in &reserved_tokens {
-        let result = tokenize(tkn.0);
+        let result = tokenize(tkn.0, false);
 
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some());
@@ -104,7 +104,7 @@ fn tokenizer_unit_combinations() {
     ]);
 
     for tkn in &combined_tokens {
-        let result = tokenize(tkn.0);
+        let result = tokenize(tkn.0, false);
 
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some());
@@ -125,6 +125,6 @@ fn tokenizer_unit_unexpected_eofs() {
     ];
 
     for case in &test_cases {
-        tokenize(case);
+        tokenize(case, false);
     }
 }

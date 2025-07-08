@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MatchExpr, MemberExpr, Node, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MatchExpr, MemberExpr, Node, NullishCoalescing, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
 
 pub struct Interpreter {
     ast: Vec<Box<Node>>,
@@ -54,6 +54,9 @@ impl Interpreter {
                     values: results
                 }))
             }
+            Node::NullLiteral(nl) => {
+                Box::new(RuntimeVal::NullVal(NullVal {  }))
+            }
             Node::BinaryExpr(binop) => {
                 self.evaluate_binary_expr(binop, env)
             }
@@ -93,9 +96,33 @@ impl Interpreter {
             Node::MatchExpr(mexpr) => {
                 self.evaluate_match_expr(mexpr, env)
             }
+            Node::NoOpNode(n) => {
+                Box::new(RuntimeVal::NullVal(NullVal {  }))
+            }
+            Node::NullishCoalescing(n) => {
+                self.evaluate_nullish_coalescing(n, env)
+            }
+            Node::Block(block) => {
+                let new_env = SourceEnv::create_global(false);
+                let last = Box::new(RuntimeVal::NullVal(NullVal {  }));
+                for sub_node in &block.body {
+                    self.evaluate(sub_node.clone(), Rc::clone(&new_env));
+                }
+                last
+            }
             _ => {
                 panic!("Evaluation match fault:\nThis node has not been set up for execution yet!\n\n{:#?}\n\n", node)
             }
+        }
+    }
+
+    fn evaluate_nullish_coalescing(&mut self, nc: &NullishCoalescing, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        let left = self.evaluate(nc.left.clone(), Rc::clone(&env));
+
+        if left.is_null() {
+            self.evaluate(nc.right.clone(), Rc::clone(&env))
+        } else {
+            left
         }
     }
 
@@ -247,6 +274,10 @@ impl Interpreter {
             RuntimeVal::FunctionVal(r#fn) => {
                 // create sub-environment
                 let sub_environment = Rc::new(RefCell::new(SourceEnv::new(Some(Rc::clone(&env)))));
+
+                if cexpr.args.len() < r#fn.params.len() {
+                    panic!("Invalid call expression: expected {} arg{} for function '{}', received {}", r#fn.params.len(), if r#fn.params.len() != 1 { "s" } else { "" }, r#fn.fn_name, cexpr.args.len());
+                }
 
                 // set all the args for the sub environment that were supplied in the CallExpr
                 let mut i = 0;

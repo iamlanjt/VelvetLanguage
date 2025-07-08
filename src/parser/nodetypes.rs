@@ -22,7 +22,48 @@ pub enum Node {
     IfStmt(IfStmt),
     Iterator(Iterator),
     MatchExpr(MatchExpr),
-    BoolLiteral(BoolLiteral)
+    BoolLiteral(BoolLiteral),
+    OptionalArg(OptionalArg),
+    NoOpNode(NoOpNode),
+    NullishCoalescing(NullishCoalescing),
+    Block(Block),
+    NullLiteral(NullLiteral)
+}
+#[derive(Clone)]
+pub struct AstSnippet {
+    pub name: String,
+    pub args: Vec<SnippetParam>, // <-- snippet *parameters*
+    pub body: Vec<Box<Node>>,    // or whatever your AST body type is
+}
+
+#[derive(Debug, Clone)]
+pub struct NullLiteral;
+
+#[derive(Debug, Clone)]
+pub struct Block {
+    pub body: Vec<Box<Node>>
+}
+
+#[derive(Debug, Clone)]
+pub struct NullishCoalescing {
+    pub left: Box<Node>,
+    pub right: Box<Node>
+}
+
+#[derive(Debug, Clone)]
+pub struct SnippetParam {
+    pub name: String,
+    pub is_optional: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct NoOpNode {
+
+}
+
+#[derive(Debug, Clone)]
+pub struct OptionalArg {
+    pub arg: Box<Node>
 }
 
 #[derive(Debug, Clone)]

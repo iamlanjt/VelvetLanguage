@@ -2,6 +2,9 @@ use std::{collections::HashMap, ops::BitAnd};
 
 use super::token::*;
 
+use std::fs;
+use std::path::Path;
+
 fn t_peek(characters: &Vec<char>, cur_idx: usize, amount: usize) -> Option<char> {
     if cur_idx + amount >= characters.len() {
         None
@@ -10,9 +13,38 @@ fn t_peek(characters: &Vec<char>, cur_idx: usize, amount: usize) -> Option<char>
     }
 }
 
+pub fn load_snippet_sources() -> Vec<String> {
+    let mut sources = Vec::new();
+    let dir_path = Path::new("./src/stdlib/snippets");
+
+    if let Ok(entries) = fs::read_dir(dir_path) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+
+                if path.extension().and_then(|ext| ext.to_str()) == Some("vel") {
+                    if let Ok(source) = fs::read_to_string(&path) {
+                        sources.push(source);
+                    }
+                }
+            }
+        }
+    }
+
+    sources
+}
+
 // TODO: once done with all basic tokenizations, error on no end path reached & enable whitespace skipping
-pub fn tokenize(input: &str) -> Vec<VelvetToken> {
-    let input_characters: Vec<char> = input.chars().clone().collect();
+pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
+    let mut append_str: String = "".to_string();
+    if inject_stdlib_snippets {
+        let snippets = load_snippet_sources();
+
+        for snippet in snippets {
+            append_str = append_str + &snippet
+        }
+    }
+    let input_characters: Vec<char> = (append_str + "\n\n" + input).chars().clone().collect();
     let mut tokenizer_index = 0;
     let mut first = true;
     let mut end_tokens: Vec<VelvetToken> = Vec::new();
@@ -84,6 +116,8 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             '[' => Some(VelvetTokenType::LBracket),
             ']' => Some(VelvetTokenType::RBracket),
             '.' => Some(VelvetTokenType::Dot),
+            '?' => Some(VelvetTokenType::QuestionMark),
+            '$' => Some(VelvetTokenType::DollarSign),
             _   => None
         };
         if token_result.is_some() {
@@ -124,7 +158,7 @@ pub fn tokenize(input: &str) -> Vec<VelvetToken> {
             let mut final_ident: String = "".to_owned();
             let start_index: usize = tokenizer_index;
 
-            while current_char.is_alphanumeric() || current_char == '_' {
+            while current_char.is_alphanumeric() || current_char == '_' || current_char == '$' {
                 final_ident = final_ident + &current_char.to_string();
                 if tokenizer_index + 1 >= input_characters.len() {
                     tokenizer_index += 1;

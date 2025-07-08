@@ -3,6 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use crate::{parser::nodetypes::NumericLiteral, runtime::values::{BoolVal, InternalFunctionVal, ListVal, NullVal, NumberVal, ObjectVal, RuntimeVal, StringVal}};
 
 use rand::Rng;
+use std::process;
 
 #[derive(Debug, Clone)]
 pub struct EnvVar {
@@ -227,6 +228,30 @@ impl SourceEnv {
                                 return RuntimeVal::BoolVal(BoolVal { value: rng.random_bool(50.0) });
                             })
                         }))
+                    ])
+                })
+            }),
+            ("process".to_string(), EnvVar {
+                var_type: String::from("internal_object"),
+                is_mutable: false,
+                value: RuntimeVal::ObjectVal(ObjectVal {
+                    values: HashMap::from([
+                        ("exit".to_string(), RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: String::from("exit"),
+                            internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                                let first = args.first();
+                                let mut exit_code: i32 = 0;
+                                if let Some(argf) = first {
+                                    match argf {
+                                        RuntimeVal::NumberVal(n) => {
+                                            exit_code = n.value.try_into().unwrap()
+                                        }
+                                        _ => {}
+                                    };
+                                };
+                                process::exit(exit_code)
+                            })
+                        })),
                     ])
                 })
             }),

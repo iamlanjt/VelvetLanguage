@@ -77,7 +77,7 @@ fn main() {
         panic!("Unable to execute Velvet file: {:#?}", contents)
     }
 
-    let mut parser = Parser::new(&contents.unwrap());
+    let mut parser = Parser::new(&contents.unwrap(), true);
     let ast = parser.produce_ast();
 
     if args.iter().find(|p| {

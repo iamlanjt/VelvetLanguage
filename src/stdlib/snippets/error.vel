@@ -1,0 +1,9 @@
+|-> error(message, exitCode?) {
+    print(
+        "Error [ exit_code",
+        exitCode ! 5,
+        "]:",
+        message
+    )
+    process.exit(exitCode ! 5)
+}
