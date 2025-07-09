@@ -13,6 +13,11 @@ fn print_node(node: &Box<Node>, depth: usize) {
     let indent = "    ".repeat(depth);
 
     match node.as_ref() {
+        Node::Block(b) => {
+            for x in b.body.clone() {
+                print_node(&x, depth)
+            }
+        }
         Node::NumericLiteral(n) => {
             println!("{}->NumericLiteral: {}", indent, n.literal_value);
         }
@@ -35,6 +40,15 @@ fn print_node(node: &Box<Node>, depth: usize) {
             println!("{}    body node count: {}", indent, f.body.len());
             println!("{}    body expanded:", indent);
             for sub_node in f.body.as_ref() {
+                print_node(&sub_node, depth + 2);
+            }
+        }
+        Node::IfStmt(i) => {
+            println!("{}->if", indent);
+            println!("{}    condition:", indent);
+            print_node(&i.condition, depth + 2);
+            println!("{}    if body:", indent);
+            for sub_node in i.body.clone() {
                 print_node(&sub_node, depth + 2);
             }
         }

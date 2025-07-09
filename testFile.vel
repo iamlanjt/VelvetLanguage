@@ -1,5 +1,12 @@
--> pred(x) => any {
-    ; clamp$(x * 4, 5, 30)
-}
+bind set as number = 1
 
-print(map_list$([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], pred))
+-> x() => none {
+    print(set)
+    bind set as number = 5
+    print("Before local drop:", set)
+    debug.drop_local(set)
+    print("After local drop:", set)
+}
+print(set)
+x()
+print(set)

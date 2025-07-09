@@ -158,7 +158,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
             let mut final_ident: String = "".to_owned();
             let start_index: usize = tokenizer_index;
 
-            while current_char.is_alphanumeric() || current_char == '_' || current_char == '$' {
+            while current_char.is_alphanumeric() || current_char == '_' || current_char == '#' {
                 final_ident = final_ident + &current_char.to_string();
                 if tokenizer_index + 1 >= input_characters.len() {
                     tokenizer_index += 1;

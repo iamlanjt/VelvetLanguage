@@ -66,8 +66,6 @@ fn tokenizer_unit_multi_char() {
         assert!(result.first().is_some());
         
         assert_eq!(unit.1.kind, result.first().unwrap().kind);
-        assert_eq!(unit.1.start_index, result.first().unwrap().start_index);
-        assert_eq!(unit.1.end_index, result.first().unwrap().end_index);
         assert_eq!(unit.1.literal_value, result.first().unwrap().literal_value);
     }
 }

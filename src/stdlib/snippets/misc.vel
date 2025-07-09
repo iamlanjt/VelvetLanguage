@@ -11,8 +11,8 @@
 }
 
 |-> map_list(list, fn) {
-    assert_type$(list, "list")
-    assert_type$(fn, "function")
+    assert_type#(list, "list")
+    assert_type#(fn, "function")
 
     bindm final as any = []
     for obj of list do {

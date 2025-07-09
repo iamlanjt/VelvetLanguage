@@ -84,6 +84,8 @@ impl Parser {
             program.push(self.parse_stmt());
         }
 
+        program.retain(|x| match x.as_ref() { Node::NoOpNode(n) => false, _ => true });
+
         program
     }
 
@@ -554,7 +556,7 @@ impl Parser {
 
 
     fn expand_snippet_invocation(&mut self, snippet_name: String) -> Box<Node> {
-        let snippet_name_trimmed = snippet_name.trim_end_matches('$');
+        let snippet_name_trimmed = snippet_name.trim_end_matches('#');
 
         let snippet_opt = self.ast_snippets.iter()
             .find(|s| s.name == snippet_name_trimmed)
@@ -596,7 +598,7 @@ impl Parser {
 
     pub fn parse_call_expr(&mut self, caller: Box<Node>) -> Box<Node> {
         if let Node::Identifier(Identifier { identifier_name }) = caller.as_ref() {
-            if identifier_name.ends_with('$') {
+            if identifier_name.ends_with('#') {
                 return self.expand_snippet_invocation(identifier_name.clone());
             }
         }

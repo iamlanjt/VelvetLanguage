@@ -477,7 +477,7 @@ impl Interpreter {
     }
 
     fn evaluate_var_declaration(&mut self, declaration: &VarDeclaration, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
-        if env.borrow().fetch(&declaration.var_identifier).is_some() {
+        if env.borrow().fetch_local(&declaration.var_identifier).is_some() {
             panic!("Attempt to redeclare local binding \"{}\"", declaration.var_identifier);
         }
 
@@ -537,7 +537,7 @@ impl Interpreter {
                 return Box::new(RuntimeVal::StringVal(StringVal { value: end_result.to_string() }));
             }
             _ => {
-                panic!("Binary expression operands must be numbers");
+                panic!("Binary expression operands must be numbers, received {} and {} with operator {}.", left_result, right_result, binop.op);
             }
         }
     }
