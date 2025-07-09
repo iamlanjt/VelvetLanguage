@@ -8,7 +8,7 @@ pub trait HasMethods {
     fn get_methods(&self) -> HashMap<String, NativeMethod>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum RuntimeVal {
     NumberVal(NumberVal),
     NullVal(NullVal),
@@ -139,6 +139,66 @@ pub struct ObjectVal {
 }
 
 impl RuntimeVal {
+    fn fmt_nondebug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RuntimeVal::NumberVal(n) => write!(f, "{}", n.value),
+            RuntimeVal::StringVal(s) => write!(f, "{}", s.value),
+            RuntimeVal::BoolVal(b) => write!(f, "{}", b.value),
+            RuntimeVal::NullVal(_) => write!(f, "null"),
+            RuntimeVal::FunctionVal(func) => write!(f, "<function {}>", func.fn_name),
+            RuntimeVal::InternalFunctionVal(func) => write!(f, "<function {}>", func.fn_name),
+            RuntimeVal::ReturnVal(r) => write!(f, "{:#?}", r.value),
+            RuntimeVal::IteratorVal(i) => write!(f, "<iterator {}>", i.to_name),
+            RuntimeVal::ListVal(lv) => {
+                write!(f, "[")?;
+                for (i, val) in lv.values.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    val.fmt_with_indent(f, 0)?;
+                }
+                write!(f, "]")
+            },
+            RuntimeVal::ObjectVal(ov) => {
+                write!(f, "{{\n")?;
+                for (i, (key, val)) in ov.values.iter().enumerate() {
+                    if i > 0 { write!(f, ",\n")?; }
+                    write!(f, "{}{}: ", "    ", key)?;
+                    val.fmt_with_indent(f, 1)?;
+                }
+                write!(f, "\n}}")
+            }
+        }
+    }
+
+    pub fn fmt_debug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RuntimeVal::NumberVal(n) => write!(f, "{}", n.value),
+            RuntimeVal::StringVal(s) => write!(f, "\"{}\"", s.value),
+            RuntimeVal::BoolVal(b) => write!(f, "{}", b.value),
+            RuntimeVal::NullVal(_) => write!(f, "null"),
+            RuntimeVal::FunctionVal(func) => write!(f, "<function {} ({})>", func.fn_name, func.params.join(", ")),
+            RuntimeVal::InternalFunctionVal(func) => write!(f, "<function::internal {}>",  func.fn_name),
+            RuntimeVal::ReturnVal(r) => write!(f, "{:#?}", r.value),
+            RuntimeVal::IteratorVal(i) => write!(f, "<iterator {}>", i.to_name),
+            RuntimeVal::ListVal(lv) => {
+                write!(f, "[")?;
+                for (i, val) in lv.values.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    val.fmt_with_indent(f, 0)?;
+                }
+                write!(f, "]")
+            },
+            RuntimeVal::ObjectVal(ov) => {
+                write!(f, "{{\n")?;
+                for (i, (key, val)) in ov.values.iter().enumerate() {
+                    if i > 0 { write!(f, ",\n")?; }
+                    write!(f, "{}{}: ", "    ", key)?;
+                    val.fmt_with_indent(f, 1)?;
+                }
+                write!(f, "\n}}")
+            }
+        }
+    }
+
     fn fmt_with_indent(&self, f: &mut fmt::Formatter<'_>, depth: usize) -> fmt::Result {
         let indent = "    ".repeat(depth); // 4 spaces per indent level
 
@@ -174,6 +234,12 @@ impl RuntimeVal {
 
 impl fmt::Display for RuntimeVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.fmt_with_indent(f, 0)
+        self.fmt_nondebug(f)
+    }
+}
+
+impl fmt::Debug for RuntimeVal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_debug(f)
     }
 }

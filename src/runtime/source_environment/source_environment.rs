@@ -196,6 +196,25 @@ impl SourceEnv {
                     ])
                 })
             }),
+            ("debug".to_string(), EnvVar {
+                var_type: String::from("internal_object"),
+                is_mutable: false,
+                value: RuntimeVal::ObjectVal(ObjectVal {
+                    values: HashMap::from([
+                        ("inspect".to_string(), RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: String::from("inspect"),
+                            internal_callback: Rc::new(|args: Vec<RuntimeVal>| {
+                                let mut end_printstr = String::new();
+                                for arg in &args {
+                                    end_printstr += format!("{:#?}", arg).as_str();
+                                    end_printstr += " ";
+                                }
+                                RuntimeVal::StringVal(StringVal { value: end_printstr })
+                            })
+                        })),
+                    ])
+                })
+            }),
             ("rand".to_string(), EnvVar {
                 var_type: String::from("internal_object"),
                 is_mutable: false,

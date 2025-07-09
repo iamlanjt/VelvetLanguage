@@ -1,15 +1,26 @@
+use core::fmt;
 use std::{any::Any, cell::RefCell, collections::HashMap, rc::Rc};
+use colored::*;
 
 use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MatchExpr, MemberExpr, Node, NullishCoalescing, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, InternalFunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
 
+#[macro_export]
+macro_rules! velvet_error {
+    ($ctx:expr, $($arg:tt)*) => {
+        $ctx.interpreter_error(format_args!($($arg)*))
+    };
+}
+
 pub struct Interpreter {
     ast: Vec<Box<Node>>,
+    call_stack: Vec<String>
 }
 
 impl Interpreter {
     pub fn new(ast: Vec<Box<Node>>) -> Self {
         Self {
-            ast
+            ast,
+            call_stack: Vec::new()
         }
     }
 
@@ -18,12 +29,34 @@ impl Interpreter {
     }
 
     pub fn evaluate_body(&mut self, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        self.call_stack.push("velvet::entry_point::evaluate_body(...)".to_string());
         let ast = self.ast.clone();
         let mut last_result: Box<RuntimeVal> = Box::new(RuntimeVal::NullVal(NullVal {}));
         for node in ast {
             last_result = self.evaluate(node, Rc::clone(&env));
         }
+        self.call_stack.pop();
         last_result
+    }
+
+    pub fn interpreter_error(&mut self, args: fmt::Arguments<'_>) -> ! {
+        self.call_stack.push("velvet::runtime_error::interpreter_error(...)".to_string());
+        println!("Velvet Runtime Error\n- {}", format!("{}", args).red().bold());
+        self.call_stack.push("velvet::internal_identifier_exceptions::call_stack_getter".to_string());
+
+        let mut end_stack_string = format!(
+            "\n0 = latest call; {} = first call\n{}",
+            self.call_stack.len() - 1,
+            format!("{}", "velvet call stack").blue().bold().underline(),
+        );
+
+        for (index, call) in self.call_stack.iter().rev().enumerate() {
+            end_stack_string += &format!("\n {} -> {}", format!("{}", index).blue().underline().bold(), call);
+        }
+
+        println!("{}", end_stack_string);
+        self.call_stack.pop();
+        std::process::exit(-1);
     }
 
     pub fn evaluate(&mut self, node: Box<Node>, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
@@ -120,7 +153,7 @@ impl Interpreter {
                 last
             }
             _ => {
-                panic!("Evaluation match fault:\nThis node has not been set up for execution yet!\n\n{:#?}\n\n", node)
+                velvet_error!(self, "Evaluation match fault:\nThis node has not been set up for execution yet!\n\n{:#?}\n\n", node)
             }
         }
     }
@@ -182,7 +215,7 @@ impl Interpreter {
             Node::Identifier(ref ident) => self.evaluate_identifier(ident, Rc::clone(&env)),
             Node::MemberExpr(ref inner) => self.evaluate_member_expr(inner, Rc::clone(&env)),
             _ => {
-                panic!("Invalid object in member expression.");
+                velvet_error!(self, "Invalid object in member expression.");
             }
         };
 
@@ -190,7 +223,7 @@ impl Interpreter {
             Node::Identifier(ref ident) => ident.identifier_name.clone(),
             Node::NumericLiteral(ref numlit) => numlit.literal_value.clone(),
             _ => {
-                panic!("Invalid property in member expression.")
+                velvet_error!(self, "Invalid property in member expression.")
             }
         };
 
@@ -225,10 +258,10 @@ impl Interpreter {
                             if let Some(val) = list.values.get(idx) {
                                 return Box::new(val.clone());
                             } else {
-                                panic!("Index {} is out of bounds!", idx);
+                                velvet_error!(self, "Index {} is out of bounds!", idx);
                             }
                         } else {
-                            panic!("Invalid index access on list: {}", property_key);
+                            velvet_error!(self, "Invalid index access on list: {}", property_key);
                         }
                     }
                 }
@@ -236,18 +269,18 @@ impl Interpreter {
             RuntimeVal::StringVal(ref strvl) => {
                 if let Ok(idx) = property_key.parse::<usize>() {
                     if idx > strvl.value.len() {
-                        panic!("Index out-of-bounds on string");
+                        velvet_error!(self, "Index out-of-bounds on string");
                     } else {
                         return Box::new(RuntimeVal::StringVal(StringVal {
                             value: strvl.value.chars().nth(idx).unwrap().try_into().unwrap()
                         }))
                     }
                 } else {
-                    panic!("Invalid index access on string: {}", property_key);
+                    velvet_error!(self, "Invalid index access on string: {}", property_key);
                 }
             }
             _ => {
-                panic!("Cannot access property '{}' on non-object value.", property_key);
+                velvet_error!(self, "Cannot access property '{}' on non-object value.", property_key);
             }
         }
     }
@@ -292,20 +325,32 @@ impl Interpreter {
                 last_result
             }
             _ => {
-                panic!("Cannot loop through non-list type");
+                velvet_error!(self, "Cannot loop through non-list type");
             }
         }
     }
 
     fn evaluate_call_expr(&mut self, cexpr: &CallExpr, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
         let caller = self.evaluate(cexpr.caller.clone(), Rc::clone(&env));
-        match caller.as_ref() {
+        let callstack_push_name = match &*caller {
+            RuntimeVal::FunctionVal(f) => {
+                format!("{}({})", f.fn_name.clone(), f.params.join(", "))
+            }
+            RuntimeVal::InternalFunctionVal(f) => {
+                format!("velvet::internal_functions::{}(...)", f.fn_name)
+            }
+            _ => {
+                format!("Unknown / unmatched caller name: DEBUG {:#?}", caller)
+            }
+        };
+        self.call_stack.push(callstack_push_name);
+        let res = match caller.as_ref() {
             RuntimeVal::FunctionVal(r#fn) => {
                 // create sub-environment
                 let sub_environment = Rc::new(RefCell::new(SourceEnv::new(Some(Rc::clone(&env)))));
 
                 if cexpr.args.len() < r#fn.params.len() {
-                    panic!("Invalid call expression: expected {} arg{} for function '{}', received {}", r#fn.params.len(), if r#fn.params.len() != 1 { "s" } else { "" }, r#fn.fn_name, cexpr.args.len());
+                    velvet_error!(self, "Invalid call expression: expected {} arg{} for function '{}', received {}", r#fn.params.len(), if r#fn.params.len() != 1 { "s" } else { "" }, r#fn.fn_name, cexpr.args.len());
                 }
 
                 // set all the args for the sub environment that were supplied in the CallExpr
@@ -321,7 +366,9 @@ impl Interpreter {
                     last_result = self.evaluate(sub_expr.clone(), Rc::clone(&sub_environment));
                     match last_result.as_ref() {
                         RuntimeVal::ReturnVal(rt) => {
-                            return self.evaluate(rt.clone().value, Rc::clone(&sub_environment));
+                            let result =  self.evaluate(rt.clone().value, Rc::clone(&sub_environment));
+                            self.call_stack.pop();
+                            return result;
                         }
                         _ => {
                             
@@ -345,20 +392,23 @@ impl Interpreter {
                             if let Node::Identifier(obj_ident) = *member_expr.object {
                                 env.borrow_mut().attempt_assignment(obj_ident.identifier_name, internal_result.clone());
                             } else {
-                                panic!("Auto-reassign for complex member expressions not implemented");
+                                velvet_error!(self, "Auto-reassign for complex member expressions not implemented");
                             }
                         }
                         _ => {
-                            panic!("Auto-reassign is only supported on identifiers or member expressions");
+                            velvet_error!(self, "Auto-reassign is only supported on identifiers or member expressions");
                         }
                     }
                 }
+                self.call_stack.pop();
                 return Box::new(internal_result);
             }
             _ => {
-                panic!("Cannot call type \"{:#?}\"", caller)
+                velvet_error!(self, "Cannot call type \"{:#?}\"", caller)
             }
-        }
+        };
+        self.call_stack.pop();
+        res
     }
 
     fn evaluate_function_definition(&mut self, def: &FunctionDefinition, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
@@ -385,7 +435,7 @@ impl Interpreter {
                 env.borrow_mut().attempt_assignment(ident.identifier_name.clone(), *assign_value);
             }
             _ => {
-                panic!("Cannot assign to left-hand non-identifier");
+                velvet_error!(self, "Cannot assign to left-hand non-identifier");
             }
         }
 
@@ -399,7 +449,7 @@ impl Interpreter {
         //println!("COMPARE {:#?}, {:#?}", lhs, rhs);
         let result = lhs
             .compare(&rhs, &comp.op)
-            .unwrap_or_else(|err| panic!("Comparator error: {}", err));
+            .unwrap_or_else(|err| velvet_error!(self, "Comparator error: {}", err));
 
         Box::new(RuntimeVal::BoolVal(BoolVal { value: result }))
     }
@@ -426,7 +476,7 @@ impl Interpreter {
         // this would allow for things like `if my_true_variable {}` instead of `if my_true_variable == true {}`
         let comparator = match condition_node {
             Node::Comparator(comp) => comp,
-            _ => panic!("If condition must be a comparator expression")
+            _ => velvet_error!(self, "If condition must be a comparator expression")
         };
 
         let condition_result = self.evaluate_comparator_expr(comparator, Rc::clone(&env));
@@ -446,7 +496,7 @@ impl Interpreter {
 
         let comparator = match condition_node {
             Node::Comparator(comp) => comp,
-            _ => panic!("While loop condition must be a comparator expression"),
+            _ => velvet_error!(self, "While loop condition must be a comparator expression"),
         };
 
         let sub_environment = Rc::new(RefCell::new(SourceEnv::new(Some(Rc::clone(&env)))));
@@ -464,6 +514,18 @@ impl Interpreter {
     }
 
     fn evaluate_identifier(&mut self, identifier: &Identifier, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
+        if &identifier.identifier_name == "__CALL_STACK" {
+            self.call_stack.push("velvet::internal_identifier_exceptions::call_stack_getter".to_string());
+            let mut end_stack_string = format!("\n0 = latest call; {} = first call\nvelvet call stack:", self.call_stack.len() - 1);
+            let mut index = 0;
+            for call in self.call_stack.iter().rev() {
+                end_stack_string = end_stack_string + format!("\n {} -> {}", index, call).as_str();
+                index = index + 1
+            }
+            self.call_stack.pop();
+
+            return Box::new(RuntimeVal::StringVal(StringVal { value: end_stack_string }));
+        }
         let value = {
             let borrowed = env.borrow();
             borrowed.fetch(&identifier.identifier_name)
@@ -472,13 +534,15 @@ impl Interpreter {
 
         match value {
             Some(v) => Box::new(v),
-            None => panic!("Unresolved identifier \"{}\" does not exist in this scope.", identifier.identifier_name),
+            None => {
+                velvet_error!(self, "Unresolved identifier \"{}\" does not exist in this scope.", identifier.identifier_name);
+            },
         }
     }
 
     fn evaluate_var_declaration(&mut self, declaration: &VarDeclaration, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
         if env.borrow().fetch_local(&declaration.var_identifier).is_some() {
-            panic!("Attempt to redeclare local binding \"{}\"", declaration.var_identifier);
+            velvet_error!(self, "Attempt to redeclare local binding \"{}\"", declaration.var_identifier);
         }
 
         let rhs = self.evaluate(declaration.var_value.clone(), Rc::clone(&env));
@@ -530,14 +594,14 @@ impl Interpreter {
                         end_result = left_str.value.clone() + &right_str.value
                     }
                     _ => {
-                        panic!("Binary operator \"{}\" is not allowed on types String and String.", binop.op.as_str())
+                        velvet_error!(self, "Binary operator \"{}\" is not allowed on types String and String.", binop.op.as_str())
                     }
                 };
                 
                 return Box::new(RuntimeVal::StringVal(StringVal { value: end_result.to_string() }));
             }
             _ => {
-                panic!("Binary expression operands must be numbers, received {} and {} with operator {}.", left_result, right_result, binop.op);
+                velvet_error!(self, "Binary expression operands must be numbers, received {} and {} with operator {}.", left_result, right_result, binop.op);
             }
         }
     }

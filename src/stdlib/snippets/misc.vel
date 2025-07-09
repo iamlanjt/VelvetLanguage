@@ -3,8 +3,9 @@
     if target_type == type {
         ; true
     }
-    print("Assertion failed on", target)
-    print("Expected type", type, " | Received", target_type)
+    print("Assertion failed on", debug.inspect(target))
+    print("Expected type", type + ",", "received", target_type)
+    print(__CALL_STACK)
     print(message ! "")
 
     process.exit(0 - 1)

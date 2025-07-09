@@ -1,12 +1,9 @@
-bind set as number = 1
-
--> x() => none {
-    print(set)
-    bind set as number = 5
-    print("Before local drop:", set)
-    debug.drop_local(set)
-    print("After local drop:", set)
+-> add(one, two, depth) => number {
+    if depth < 15 {
+        ; add(one, two, depth + 1)
+    }
+    one - two
+    ; add(one, "a", depth + 1)
 }
-print(set)
-x()
-print(set)
+
+print(add(1, 2, 0))
