@@ -344,6 +344,9 @@ impl Interpreter {
             }
         };
         self.call_stack.push(callstack_push_name);
+        if self.call_stack.len() > 100 {
+            self.call_stack.remove(0);
+        }
         let res = match caller.as_ref() {
             RuntimeVal::FunctionVal(r#fn) => {
                 // create sub-environment

@@ -1,6 +1,6 @@
 use crate::{parser::{nodetypes::Node, parser::Parser}, runtime::{interpreter::Interpreter, source_environment::source_environment::EnvVar}, tokenizer::tokenizer::tokenize};
 use crate::{runtime::source_environment::source_environment::SourceEnv};
-use std::{fs, rc::Rc};
+use std::{fs::{self, File}, io::Write, rc::Rc};
 use std::time::Instant;
 use std::env;
 
@@ -8,6 +8,11 @@ mod tokenizer;
 mod parser;
 mod runtime;
 mod tests;
+
+fn read_ast_from_str(s: &str) -> Vec<Box<Node>> {
+    let ast: Vec<Box<Node>> = serde_json::from_str(&s).expect("Deserialization failed");
+    ast
+}
 
 fn print_node(node: &Box<Node>, depth: usize) {
     let indent = "    ".repeat(depth);
@@ -86,13 +91,54 @@ fn main() {
     }
 
     let file_path = args[1].clone();
-    let contents = fs::read_to_string(file_path);
+    let contents = fs::read_to_string(&file_path);
     if contents.is_err() {
         panic!("Unable to execute Velvet file: {:#?}", contents)
     }
 
-    let mut parser = Parser::new(&contents.unwrap(), true);
+    let inject_stdlib_snippets = if args.iter().find(|p| {
+        *p.to_lowercase() == *"no_stdlib_snippets"
+    }).is_some() {
+        false
+    } else {
+        true
+    };
+
+    let is_sandboxed = if args.iter().find(|p| {
+        *p.to_lowercase() == *"sandbox"
+    }).is_some() {
+        true
+    } else {
+        false
+    };
+
+    let compile_json_ast = if args.iter().find(|p| {
+        *p.to_lowercase() == *"compile_json_ast"
+    }).is_some() {
+        true
+    } else {
+        false
+    };
+
+    if file_path.ends_with(".imvel") {
+        let ast = read_ast_from_str(&contents.unwrap());
+
+        let mut interp = Interpreter::new(ast);
+        interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
+        return
+    };
+
+    let mut parser = Parser::new(&contents.unwrap().as_ref(), inject_stdlib_snippets);
     let ast = parser.produce_ast();
+
+    if compile_json_ast {
+        let json_version = serde_json::to_string(&ast).expect("Serialization of AST failed.");
+
+        let file = File::create("./json_ast.imvel");
+        file.unwrap().write_all(json_version.as_bytes()).expect("Failed to write to file");
+        println!("Wrote Intermediate Velvet File to ./json_ast.imvel.");
+        std::process::exit(0);
+    }
 
     if args.iter().find(|p| {
         *p.to_lowercase() == *"do_dump_ast"
@@ -102,13 +148,6 @@ fn main() {
             print_node(inner_node, 0);
         }
     }
-    let is_sandboxed = if args.iter().find(|p| {
-        *p.to_lowercase() == *"sandbox"
-    }).is_some() {
-        true
-    } else {
-        false
-    };
     let mut interp = Interpreter::new(ast);
     interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
 }

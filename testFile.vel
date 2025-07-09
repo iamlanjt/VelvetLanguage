@@ -1,9 +1,0 @@
--> add(one, two, depth) => number {
-    if depth < 15 {
-        ; add(one, two, depth + 1)
-    }
-    one - two
-    ; add(one, "a", depth + 1)
-}
-
-print(add(1, 2, 0))
