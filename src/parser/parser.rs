@@ -242,29 +242,21 @@ impl Parser {
     }
 
     pub fn parse_comparator_expr(&mut self) -> Box<Node> {
-        if self.at_end() {
-            panic!("Unexpected EOF: comparator operator expected");
-        }
-
-        let is_comparator = match self.peek() {
-            Some(x) => matches!(x.kind, VelvetTokenType::Gt | VelvetTokenType::Lt | VelvetTokenType::DoubleEq),
-            None => false,
-        };
-
-        if !is_comparator {
-            return self.parse_list_expr();
-        }
-
         let lhs = self.parse_list_expr();
-        let operator = self.eat().literal_value.clone();
         
-        let rhs = self.parse_list_expr();
+        if !self.at_end() && matches!(self.current().kind, VelvetTokenType::Gt | VelvetTokenType::Lt | VelvetTokenType::DoubleEq) {
+            let operator = self.eat().literal_value.clone();
+    
+            let rhs = self.parse_list_expr();
 
-        return Box::new(Node::Comparator(Comparator {
-            lhs,
-            rhs,
-            op: operator
-        }))
+            return Box::new(Node::Comparator(Comparator {
+                lhs,
+                rhs,
+                op: operator
+            }))
+        }
+        
+        lhs
     }
 
     pub fn parse_list_expr(&mut self) -> Box<Node> {
@@ -670,7 +662,25 @@ impl Parser {
         }))
     }
 
+    pub fn parse_block_expr(&mut self) -> Box<Node> {
+        if self.current().kind == VelvetTokenType::LBrace {
+            self.eat();
+            let mut block_body: Vec<Box<Node>> = Vec::new();
+            while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
+                block_body.push(self.parse_stmt());
+            }
+            self.eat();
+
+            Box::new(Node::Block(Block {
+                body: block_body
+            }))
+        } else {
+            return self.parse_expr();
+        }
+    }
+
     pub fn parse_match_expr(&mut self) -> Box<Node> {
+        // let target = self.parse_expr();
         let target = self.parse_expr();
 
         self.expect_token(VelvetTokenType::LBrace, "Expected start of match body");
@@ -678,7 +688,8 @@ impl Parser {
         while !self.at_end() && self.current().kind != VelvetTokenType::RBrace {
             let left = self.parse_expr();
             self.expect_token(VelvetTokenType::EqArrow, "Expected director");
-            let right = self.parse_expr();
+            // let right = self.parse_expr();
+            let right = self.parse_block_expr();
 
             /*
             if !is_node_literal(&left.as_ref()) {

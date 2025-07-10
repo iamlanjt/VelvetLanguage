@@ -15,7 +15,7 @@ pub fn process_module() -> RuntimeVal {
                 Option<NumberVal> => exit_code = NumberVal { value: 0 }
             ];
 
-            std::process::exit(exit_code.value.try_into().unwrap())
+            std::process::exit(exit_code.value.try_into().unwrap());
         }))
     ])
 }

@@ -1,5 +1,7 @@
 use std::{collections::HashMap};
 
+use colored::Colorize;
+
 use super::token::*;
 
 use std::fs;
@@ -14,7 +16,7 @@ fn t_peek(characters: &Vec<char>, cur_idx: usize, amount: usize) -> Option<char>
 }
 
 pub fn join_tokenizer_output(output: TokenizerOutput) -> Vec<VelvetToken> {
-    let mut cloned_real = output.real_tokens.clone();
+    let cloned_real = output.real_tokens.clone();
     let mut basin_snippets: Vec<VelvetToken> = Vec::new();
 
     for snippet_tgroup in output.snippet_tokens {
@@ -56,6 +58,18 @@ pub struct TokenizerOutput {
     pub snippet_tokens: Vec<Vec<VelvetToken>>
 }
 
+fn tokenizer_error(src: &str, err: &str, line: usize, column: usize) {
+    let target_line = *src.split('\n').collect::<Vec<_>>().get(line).unwrap();
+    println!("{}", String::from("Velvet Syntax Error\n").red());
+    println!("{}: {}", String::from("error").red().bold(), err.bold());
+    println!("{}", String::from("   |").bright_yellow());
+    println!("{}  {}", format!("{}", String::from(" " .to_owned() + &line.to_string() + " |")).bright_yellow(), target_line);
+    println!("{}  {}", String::from("   |").bright_yellow(),
+        format!("{}^ {}", " ".repeat(column - 1), err).red().bold()
+    );
+    panic!("Unrecoverable syntax error. See above.");
+}
+
 pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
     // Represent standard lib snippets as separate groups to not mess up idx/line/col source backtracking
     let mut snippet_tokens: Vec<Vec<VelvetToken>> = Vec::new();
@@ -89,7 +103,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
 
         tokenizer_column += 1;
 
-        let START_COL = tokenizer_column;
+        let start_col = tokenizer_column;
 
         if current_char == '\n' || current_char == '\r' {
             tokenizer_line += 1;
@@ -159,7 +173,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
                 literal_value: prefix_literal_value + &input_characters[tokenizer_index].to_string(),
                 real_size: 1,
                 line: tokenizer_line,
-                column: START_COL
+                column: start_col
             });
             tokenizer_index += 1;
             continue;
@@ -183,7 +197,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
                 literal_value: final_number.clone(),
                 real_size: final_number.len(),
                 line: tokenizer_line,
-                column: START_COL
+                column: start_col
             });
             continue
         }
@@ -213,7 +227,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
                     literal_value: final_ident.clone(),
                     real_size: final_ident.len(),
                     line: tokenizer_line,
-                    column: START_COL
+                    column: start_col
                 });
                 tokenizer_index += 1;
                 continue
@@ -224,7 +238,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
                 literal_value: final_ident.clone(),
                 real_size: final_ident.len(),
                 line: tokenizer_line,
-                column: START_COL
+                column: start_col
             });
             tokenizer_index += 1;
             continue
@@ -235,7 +249,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
             let mut end_string = "".to_owned();
 
             if tokenizer_index + 1 >= input_characters.len() {
-                panic!("Unexpected EOF: Expected string end sequence, got EOF.")
+                tokenizer_error(input, "Unexpected EOF: Expected string end sequence, got EOF.", tokenizer_line - 1, tokenizer_column);
             }
             tokenizer_index += 1;
             tokenizer_column += 1;
@@ -243,11 +257,11 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
 
             while current_char != end_quote_char {
                 if current_char == '\n' || current_char == '\r' {
-                    panic!("Unexpected Newline: Strings cannot span multiple lines.");
+                    tokenizer_error(input, "Unexpected Newline: Strings cannot span multiple lines.", tokenizer_line - 1, tokenizer_column);
                 }
                 end_string += &current_char.to_string();
                 if tokenizer_index + 1 >= input_characters.len() {
-                    panic!("Unexpected EOF: Expected string end sequence, got EOF.")
+                    tokenizer_error(input, "Unexpected EOF: Expected string end sequence, got EOF.", tokenizer_line - 1, tokenizer_column);
                 }
                 tokenizer_index += 1;
                 tokenizer_column += 1;
@@ -259,7 +273,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
                 literal_value: end_string.clone(),
                 real_size: end_string.len() + 2, // +2 for start and end sequences
                 line: tokenizer_line,
-                column: START_COL
+                column: start_col
             });
             tokenizer_index += 1;
             tokenizer_column += 1;
@@ -267,7 +281,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
         }
 
         // No token consumed, assume bad syntax
-        panic!("Tokenizer Syntax Error: Failed to associate character {} with a token.", current_char);
+        tokenizer_error(input, &format!("Tokenizer Syntax Error: Failed to associate character {} with a token.", current_char), tokenizer_line - 1, tokenizer_column);
     }
 
     return TokenizerOutput {

@@ -33,9 +33,9 @@ fn tokenizer_unit_single_char() {
     for unit in &test_characters {
         let results = tokenize(&unit.0.to_string(), false);
 
-        assert_eq!(results.len(), 1);
+        assert_eq!(results.real_tokens.len(), 1);
 
-        let first = results.first();
+        let first = results.real_tokens.first();
 
         assert!(first.is_some());
         assert_eq!(first.unwrap().kind, *unit.1)
@@ -47,26 +47,28 @@ fn tokenizer_unit_multi_char() {
     let test_phrases = HashMap::from([
         ("456", VelvetToken {
             kind: VelvetTokenType::Number,
-            start_index: 0,
-            end_index: 3,
-            literal_value: String::from("456")
+            literal_value: String::from("456"),
+            real_size: 3,
+            line: 1,
+            column: 1
         }),
         ("'single_.   123  str'", VelvetToken {
             kind: VelvetTokenType::Str,
-            start_index: 0,
-            end_index: 20,
-            literal_value: String::from("single_.   123  str")
+            literal_value: String::from("single_.   123  str"),
+            real_size: ("single_.   123  str").len(),
+            line: 1,
+            column: 1
         })
     ]);
 
     for unit in &test_phrases {
         let result = tokenize(unit.0, false);
         
-        assert_eq!(result.len(), 1);
-        assert!(result.first().is_some());
+        assert_eq!(result.real_tokens.len(), 1);
+        assert!(result.real_tokens.first().is_some());
         
-        assert_eq!(unit.1.kind, result.first().unwrap().kind);
-        assert_eq!(unit.1.literal_value, result.first().unwrap().literal_value);
+        assert_eq!(unit.1.kind, result.real_tokens.first().unwrap().kind);
+        assert_eq!(unit.1.literal_value, result.real_tokens.first().unwrap().literal_value);
     }
 }
 
@@ -86,10 +88,10 @@ fn tokenizer_unit_reserved_keywords() {
     for tkn in &reserved_tokens {
         let result = tokenize(tkn.0, false);
 
-        assert_eq!(result.len(), 1);
-        assert!(result.first().is_some());
+        assert_eq!(result.real_tokens.len(), 1);
+        assert!(result.real_tokens.first().is_some());
 
-        assert_eq!(result.first().unwrap().kind, *tkn.1);
+        assert_eq!(result.real_tokens.first().unwrap().kind, *tkn.1);
     }
 }
 
@@ -104,10 +106,10 @@ fn tokenizer_unit_combinations() {
     for tkn in &combined_tokens {
         let result = tokenize(tkn.0, false);
 
-        assert_eq!(result.len(), 1);
-        assert!(result.first().is_some());
+        assert_eq!(result.real_tokens.len(), 1);
+        assert!(result.real_tokens.first().is_some());
 
-        assert_eq!(result.first().unwrap().kind, *tkn.1);
+        assert_eq!(result.real_tokens.first().unwrap().kind, *tkn.1);
     }
 }
 
