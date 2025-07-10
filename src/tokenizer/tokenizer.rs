@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::BitAnd};
+use std::{collections::HashMap};
 
 use super::token::*;
 
@@ -11,6 +11,23 @@ fn t_peek(characters: &Vec<char>, cur_idx: usize, amount: usize) -> Option<char>
     } else {
         Some(characters[cur_idx + amount])
     }
+}
+
+pub fn join_tokenizer_output(output: TokenizerOutput) -> Vec<VelvetToken> {
+    let mut cloned_real = output.real_tokens.clone();
+    let mut basin_snippets: Vec<VelvetToken> = Vec::new();
+
+    for snippet_tgroup in output.snippet_tokens {
+        for t in snippet_tgroup {
+            basin_snippets.push(t)
+        };
+    };
+
+    for joined_snippet_token in cloned_real {
+        basin_snippets.push(joined_snippet_token);
+    }
+
+    basin_snippets
 }
 
 pub fn load_snippet_sources() -> Vec<String> {
@@ -34,19 +51,25 @@ pub fn load_snippet_sources() -> Vec<String> {
     sources
 }
 
-// TODO: once done with all basic tokenizations, error on no end path reached & enable whitespace skipping
-pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
-    let mut append_str: String = "".to_string();
+pub struct TokenizerOutput {
+    pub real_tokens: Vec<VelvetToken>,
+    pub snippet_tokens: Vec<Vec<VelvetToken>>
+}
+
+pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> TokenizerOutput {
+    // Represent standard lib snippets as separate groups to not mess up idx/line/col source backtracking
+    let mut snippet_tokens: Vec<Vec<VelvetToken>> = Vec::new();
     if inject_stdlib_snippets {
         let snippets = load_snippet_sources();
 
         for snippet in snippets {
-            append_str = append_str + &snippet
+            snippet_tokens.push(tokenize(&snippet, false).real_tokens);
         }
     }
-    let input_characters: Vec<char> = (append_str + "\n\n" + input).chars().clone().collect();
+    let input_characters: Vec<char> = input.chars().clone().collect();
     let mut tokenizer_index = 0;
-    let mut first = true;
+    let mut tokenizer_line: usize = 1;
+    let mut tokenizer_column: usize = 0;
     let mut end_tokens: Vec<VelvetToken> = Vec::new();
 
     let reserved_tokens: HashMap<&'static str, VelvetTokenType> = HashMap::from([
@@ -64,6 +87,15 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
     while tokenizer_index < input_characters.len() {
         let mut current_char = input_characters[tokenizer_index];
 
+        tokenizer_column += 1;
+
+        let START_COL = tokenizer_column;
+
+        if current_char == '\n' || current_char == '\r' {
+            tokenizer_line += 1;
+            tokenizer_column = 0;
+        }
+
         if current_char.is_whitespace() {
             tokenizer_index += 1;
             continue
@@ -78,6 +110,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
                         match t_peek(&input_characters, tokenizer_index, 2) {
                             Some('>') => {
                                 tokenizer_index += 2;
+                                tokenizer_column += 2;
                                 prefix_literal_value = "|-".to_owned();
                                 Some(VelvetTokenType::WallArrow)
                             }
@@ -90,7 +123,7 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
             '+' => Some(VelvetTokenType::Plus),
             '-' => {
                 match t_peek(&input_characters, tokenizer_index, 1) {
-                    Some('>') => { tokenizer_index += 1; prefix_literal_value = "-".to_owned(); Some(VelvetTokenType::Arrow) },
+                    Some('>') => { tokenizer_index += 1; tokenizer_column += 1; prefix_literal_value = "-".to_owned(); Some(VelvetTokenType::Arrow) },
                     _ => Some(VelvetTokenType::Minus)
                 }
             },
@@ -98,8 +131,8 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
             '/' => Some(VelvetTokenType::Slash),
             '=' => {
                 match t_peek(&input_characters, tokenizer_index, 1) {
-                    Some('>') => { tokenizer_index += 1; prefix_literal_value = "=".to_owned(); Some(VelvetTokenType::EqArrow)},
-                    Some('=') => { tokenizer_index += 1; prefix_literal_value = "=".to_owned();Some(VelvetTokenType::DoubleEq)},
+                    Some('>') => { tokenizer_index += 1; tokenizer_column += 1; prefix_literal_value = "=".to_owned(); Some(VelvetTokenType::EqArrow)},
+                    Some('=') => { tokenizer_index += 1; tokenizer_column += 1; prefix_literal_value = "=".to_owned();Some(VelvetTokenType::DoubleEq)},
                     _ => Some(VelvetTokenType::Eq)
                 }
             },
@@ -123,9 +156,10 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
         if token_result.is_some() {
             end_tokens.push(VelvetToken {
                 kind: token_result.expect(""),
-                start_index: tokenizer_index,
-                end_index: tokenizer_index,
-                literal_value: prefix_literal_value + &input_characters[tokenizer_index].to_string()
+                literal_value: prefix_literal_value + &input_characters[tokenizer_index].to_string(),
+                real_size: 1,
+                line: tokenizer_line,
+                column: START_COL
             });
             tokenizer_index += 1;
             continue;
@@ -135,20 +169,21 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
         // Numbers
         if current_char.is_numeric() {
             let mut final_number = "".to_owned();
-            let start_index = tokenizer_index;
             
             while tokenizer_index < input_characters.len()
                 && input_characters[tokenizer_index].is_numeric()
             {
                 final_number.push(input_characters[tokenizer_index]);
                 tokenizer_index += 1;
+                tokenizer_column += 1;
             }
 
             end_tokens.push(VelvetToken {
                 kind: VelvetTokenType::Number,
-                start_index,
-                end_index: tokenizer_index,
-                literal_value: final_number
+                literal_value: final_number.clone(),
+                real_size: final_number.len(),
+                line: tokenizer_line,
+                column: START_COL
             });
             continue
         }
@@ -156,7 +191,6 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
         // Identifiers
         if current_char.is_alphabetic() || current_char == '_' {
             let mut final_ident: String = "".to_owned();
-            let start_index: usize = tokenizer_index;
 
             while current_char.is_alphanumeric() || current_char == '_' || current_char == '#' {
                 final_ident = final_ident + &current_char.to_string();
@@ -165,18 +199,21 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
                     break
                 }
                 tokenizer_index += 1;
+                tokenizer_column += 1;
                 current_char = input_characters[tokenizer_index]
             }
 
             tokenizer_index -= 1;
+            tokenizer_column -= 1;
 
             let reserved_check = reserved_tokens.get(final_ident.as_str());
             if let Some(x) = reserved_check {
                 end_tokens.push(VelvetToken {
                     kind: x.to_owned(),
-                    start_index,
-                    end_index: tokenizer_index,
-                    literal_value: final_ident
+                    literal_value: final_ident.clone(),
+                    real_size: final_ident.len(),
+                    line: tokenizer_line,
+                    column: START_COL
                 });
                 tokenizer_index += 1;
                 continue
@@ -184,9 +221,10 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
 
             end_tokens.push(VelvetToken {
                 kind: VelvetTokenType::Identifier,
-                start_index,
-                end_index: tokenizer_index,
-                literal_value: final_ident
+                literal_value: final_ident.clone(),
+                real_size: final_ident.len(),
+                line: tokenizer_line,
+                column: START_COL
             });
             tokenizer_index += 1;
             continue
@@ -194,31 +232,37 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
 
         if current_char == '\'' || current_char == '"' {
             let end_quote_char = current_char;
-            let si = tokenizer_index;
             let mut end_string = "".to_owned();
 
             if tokenizer_index + 1 >= input_characters.len() {
                 panic!("Unexpected EOF: Expected string end sequence, got EOF.")
             }
             tokenizer_index += 1;
+            tokenizer_column += 1;
             current_char = input_characters[tokenizer_index];
 
             while current_char != end_quote_char {
+                if current_char == '\n' || current_char == '\r' {
+                    panic!("Unexpected Newline: Strings cannot span multiple lines.");
+                }
                 end_string += &current_char.to_string();
                 if tokenizer_index + 1 >= input_characters.len() {
                     panic!("Unexpected EOF: Expected string end sequence, got EOF.")
                 }
                 tokenizer_index += 1;
+                tokenizer_column += 1;
                 current_char = input_characters[tokenizer_index];
             }
 
             end_tokens.push(VelvetToken {
                 kind: VelvetTokenType::Str,
-                start_index: si,
-                end_index: tokenizer_index,
-                literal_value: end_string
+                literal_value: end_string.clone(),
+                real_size: end_string.len() + 2, // +2 for start and end sequences
+                line: tokenizer_line,
+                column: START_COL
             });
             tokenizer_index += 1;
+            tokenizer_column += 1;
             continue
         }
 
@@ -226,5 +270,8 @@ pub fn tokenize(input: &str, inject_stdlib_snippets: bool) -> Vec<VelvetToken> {
         panic!("Tokenizer Syntax Error: Failed to associate character {} with a token.", current_char);
     }
 
-    return end_tokens;
+    return TokenizerOutput {
+        real_tokens: end_tokens,
+        snippet_tokens: snippet_tokens
+    };
 }

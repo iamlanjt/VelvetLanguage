@@ -1,0 +1,2 @@
+bind x as number = 1
+print(x)

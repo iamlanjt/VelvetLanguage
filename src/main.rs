@@ -91,10 +91,9 @@ fn main() {
     }
 
     let file_path = args[1].clone();
-    let contents = fs::read_to_string(&file_path);
-    if contents.is_err() {
-        panic!("Unable to execute Velvet file: {:#?}", contents)
-    }
+    let contents = fs::read_to_string(&file_path).unwrap_or_else(|err| {
+        panic!("Unable to execute Velvet file: {:#?}", err)
+    });
 
     let inject_stdlib_snippets = if args.iter().find(|p| {
         *p.to_lowercase() == *"no_stdlib_snippets"
@@ -121,14 +120,14 @@ fn main() {
     };
 
     if file_path.ends_with(".imvel") {
-        let ast = read_ast_from_str(&contents.unwrap());
+        let ast = read_ast_from_str(&contents);
 
         let mut interp = Interpreter::new(ast);
         interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
         return
     };
 
-    let mut parser = Parser::new(&contents.unwrap().as_ref(), inject_stdlib_snippets);
+    let mut parser = Parser::new(&contents, inject_stdlib_snippets);
     let ast = parser.produce_ast();
 
     if compile_json_ast {
@@ -141,6 +140,67 @@ fn main() {
     }
 
     if args.iter().find(|p| {
+        *p.to_lowercase() == *"do_dump_tokens"
+    }).is_some() {
+        let tokenizer_results = tokenize(&contents, inject_stdlib_snippets);
+        println!("[Stdlib Snippet Token Dump]");
+        println!("\t-> <ommitted {} snippet group(s): not useful for debugging; snippets available via source at https://www.github.com/iamlanjt/velvetlanguage src/stdlib/snippets>", tokenizer_results.snippet_tokens.len());
+    
+        println!("\n[Pure Token Dump]: {} item(s)", tokenizer_results.real_tokens.len());
+        let label_width = tokenizer_results.real_tokens.iter()
+            .map(|t| format!("Token {}", t.kind).len())
+            .max()
+            .unwrap_or(0) + 3;
+
+        let value_width = tokenizer_results.real_tokens.iter()
+            .map(|t| t.literal_value.len())
+            .max()
+            .unwrap_or(0) + 3;
+
+        let line_width = tokenizer_results.real_tokens.iter()
+            .map(|t| t.line.to_string().len())
+            .max()
+            .unwrap_or(0) + 2;
+
+        let col_width = tokenizer_results.real_tokens.iter()
+            .map(|t| t.column.to_string().len())
+            .max()
+            .unwrap_or(0) + 2;
+
+        let end_line_width = tokenizer_results.real_tokens.iter()
+            .map(|t| (t.line).to_string().len())
+            .max()
+            .unwrap_or(0) + 2;
+
+        let end_col_width = tokenizer_results.real_tokens.iter()
+            .map(|t| (t.column + t.real_size).to_string().len())
+            .max()
+            .unwrap_or(0) + 2;
+
+        for t in tokenizer_results.real_tokens {
+            let label = format!("Token {}", t.kind);
+
+            println!(
+                "    -> src {start_line:>line_w$}:{start_col:<col_w$} → {end_line:>end_line_w$}:{end_col:<end_col_w$}  {label:<label_w$} {value:<value_w$}",
+                start_line = t.line,
+                start_col = t.column,
+                end_line = t.line,
+                end_col = (t.column + t.real_size),
+                label = label,
+                value = t.literal_value,
+                line_w = line_width,
+                col_w = col_width,
+                end_line_w = end_line_width,
+                end_col_w = end_col_width,
+                label_w = label_width,
+                value_w = value_width
+            );
+        }
+
+
+    }
+
+    if args.iter().find(|p| {
         *p.to_lowercase() == *"do_dump_ast"
     }).is_some() {
         println!("[AST Dump]");
@@ -148,6 +208,7 @@ fn main() {
             print_node(inner_node, 0);
         }
     }
+
     let mut interp = Interpreter::new(ast);
     interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
 }

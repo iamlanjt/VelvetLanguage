@@ -2,7 +2,7 @@ use core::fmt;
 use std::{any::Any, cell::RefCell, collections::HashMap, rc::Rc};
 use colored::*;
 
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MatchExpr, MemberExpr, Node, NullishCoalescing, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, InternalFunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, ReturnVal, RuntimeVal, StringVal}}};
+use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, MatchExpr, MemberExpr, Node, NullishCoalescing, ObjectLiteral, Return, VarDeclaration, WhileStmt}, runtime::{source_environment::source_environment::SourceEnv, values::{BoolVal, FunctionVal, InternalFunctionVal, IteratorVal, ListVal, NullVal, NumberVal, ObjectVal, Pretty, ReturnVal, RuntimeVal, StringVal}}};
 
 #[macro_export]
 macro_rules! velvet_error {
@@ -223,7 +223,7 @@ impl Interpreter {
             Node::Identifier(ref ident) => ident.identifier_name.clone(),
             Node::NumericLiteral(ref numlit) => numlit.literal_value.clone(),
             _ => {
-                velvet_error!(self, "Invalid property in member expression.")
+                "".into()
             }
         };
 
@@ -253,6 +253,14 @@ impl Interpreter {
                             }),
                         }));
                     }
+                    "len" => {
+                        return Box::new(RuntimeVal::InternalFunctionVal(InternalFunctionVal {
+                            fn_name: "len".into(),
+                            internal_callback: Rc::new(move |args| {
+                                RuntimeVal::NumberVal(NumberVal { value: list_for_closure.borrow().len() })
+                            }),
+                        }));
+                    }
                     _ => {
                         if let Ok(idx) = property_key.parse::<usize>() {
                             if let Some(val) = list.values.get(idx) {
@@ -261,7 +269,29 @@ impl Interpreter {
                                 velvet_error!(self, "Index {} is out of bounds!", idx);
                             }
                         } else {
-                            velvet_error!(self, "Invalid index access on list: {}", property_key);
+                            if mem.is_computed {
+                                let computed_property = self.evaluate(mem.property.clone(), Rc::clone(&env));
+
+                            let index = match *computed_property {
+                                RuntimeVal::NumberVal(n) => {
+                                    if n.value < 0 {
+                                        velvet_error!(self, "List index must be a non-negative integer.");
+                                    }
+                                    n.value as usize
+                                }
+                                _ => {
+                                    velvet_error!(self, "Computed index must be a number.");
+                                }
+                            };
+
+                            if let Some(val) = list.values.get(index) {
+                                return Box::new(val.clone());
+                            } else {
+                                velvet_error!(self, "Index {} is out of bounds!", index);
+                            }
+                            } else {
+                                velvet_error!(self, "Invalid index access on list: {}", property_key);
+                            }
                         }
                     }
                 }
@@ -340,7 +370,7 @@ impl Interpreter {
                 format!("velvet::internal_functions::{}(...)", f.fn_name)
             }
             _ => {
-                format!("Unknown / unmatched caller name: DEBUG {:#?}", caller)
+                format!(">>> ILLEGAL CALL -> Caller = \"{:?}\", arglen = {} arg(s)", caller, cexpr.args.len())
             }
         };
         self.call_stack.push(callstack_push_name);
@@ -358,11 +388,15 @@ impl Interpreter {
 
                 // set all the args for the sub environment that were supplied in the CallExpr
                 let mut i = 0;
+                let mut post_evaluate_args: Vec<String> = Vec::new();
                 for arg in &cexpr.args {
                     let evaluated = self.evaluate(arg.clone(), Rc::clone(&env));
+                    post_evaluate_args.push(format!("{} = {:#?}", r#fn.params.get(i).unwrap(), evaluated));
                     sub_environment.borrow_mut().declare_var(r#fn.params[i].clone(), *evaluated, "inferred_any".to_string(), false);
                     i = i + 1;
                 }
+                self.call_stack.pop();
+                self.call_stack.push(format!("{}({})", r#fn.fn_name, post_evaluate_args.join(", ")));
 
                 let mut last_result: Box<RuntimeVal> = Box::new(RuntimeVal::NullVal(NullVal {  }));
                 for sub_expr in r#fn.execution_body.as_ref() {
@@ -382,8 +416,11 @@ impl Interpreter {
             }
             RuntimeVal::InternalFunctionVal(r#fn) => {
                 let mut new_args: Vec<RuntimeVal> = Vec::new();
-                for arg in &cexpr.args {
-                    new_args.push(*self.evaluate(Box::new(*arg.clone()), Rc::clone(&env)));
+                let mut post_evaluate_args: Vec<String> = Vec::new();
+                for (index, arg) in cexpr.args.iter().enumerate() {
+                    let evaluated_arg = self.evaluate(Box::new(*arg.clone()), Rc::clone(&env));
+                    post_evaluate_args.push(format!("param{} = {}", index, "unknown"));
+                    new_args.push(*evaluated_arg);
                 }
                 let internal_result = (r#fn.internal_callback)(new_args);
                 if Self::auto_reassign_methods().contains(&r#fn.fn_name.as_str()) {
@@ -502,12 +539,11 @@ impl Interpreter {
             _ => velvet_error!(self, "While loop condition must be a comparator expression"),
         };
 
-        let sub_environment = Rc::new(RefCell::new(SourceEnv::new(Some(Rc::clone(&env)))));
-
         while {
             let condition_result = self.evaluate_comparator_expr(comparator, Rc::clone(&env));
             self.is_truthy(&*condition_result, Rc::clone(&env))
         } {
+            let sub_environment = Rc::new(RefCell::new(SourceEnv::new(Some(Rc::clone(&env)))));
             for sub_node in &while_loop.body {
                 self.evaluate(sub_node.clone(), Rc::clone(&sub_environment));
             }

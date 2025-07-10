@@ -128,8 +128,8 @@ impl ListVal {
         self.values.push(value);
     }
 
-    pub fn len(&mut self) -> usize {
-        self.values.len()
+    pub fn len(&self) -> isize {
+        self.values.len().try_into().unwrap()
     }
 }
 
@@ -139,7 +139,7 @@ pub struct ObjectVal {
 }
 
 impl RuntimeVal {
-    fn fmt_nondebug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    pub fn fmt_nondebug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RuntimeVal::NumberVal(n) => write!(f, "{}", n.value),
             RuntimeVal::StringVal(s) => write!(f, "{}", s.value),
@@ -241,5 +241,13 @@ impl fmt::Display for RuntimeVal {
 impl fmt::Debug for RuntimeVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_debug(f)
+    }
+}
+
+pub struct Pretty<'a>(pub &'a RuntimeVal);
+
+impl<'a> fmt::Display for Pretty<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt_nondebug(f)
     }
 }

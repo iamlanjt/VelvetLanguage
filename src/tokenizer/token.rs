@@ -97,7 +97,8 @@ impl fmt::Display for VelvetTokenType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VelvetToken {
     pub kind: VelvetTokenType,
-    pub start_index: usize,
-    pub end_index: usize,
+    pub real_size: usize,
+    pub line: usize,
+    pub column: usize,
     pub literal_value: String
 }

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{parser::nodetypes::{AssignmentExpr, AstSnippet, BinaryExpr, Block, BoolLiteral, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, NoOpNode, Node, NullLiteral, NullishCoalescing, NumericLiteral, ObjectLiteral, OptionalArg, Return, SnippetParam, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize}};
+use crate::{parser::nodetypes::{AssignmentExpr, AstSnippet, BinaryExpr, Block, BoolLiteral, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, NoOpNode, Node, NullLiteral, NullishCoalescing, NumericLiteral, ObjectLiteral, OptionalArg, Return, SnippetParam, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::{join_tokenizer_output, tokenize}}};
 
 pub struct Parser {
     tokens: Vec<VelvetToken>,
@@ -21,7 +21,7 @@ impl Parser {
     pub fn new(input: &str, inject_stdlib_snippets: bool) -> Self {
         let tokenized_result = tokenize(input, inject_stdlib_snippets);
         Self {
-            tokens: tokenized_result,
+            tokens: join_tokenizer_output(tokenized_result),
             token_pointer: 0,
             tkn_chain: Vec::new(),
             ast_snippets: Vec::new()
@@ -61,7 +61,7 @@ impl Parser {
         let length = &reconstructed_consumed_tokens.len() - 1;
         let indicator = " ".repeat(
             ("Token chain reconstruction:   ").len()
-        ) + &"-".repeat(length-2) + &format!(" ^ FAULT {} @ idx{}", faulty_token.kind, faulty_token.start_index);
+        ) + &"-".repeat(length-2) + &format!(" ^ FAULT {} - program:{}:{}", faulty_token.kind, faulty_token.line, faulty_token.column);
         panic!("\nParser error:  {}\nToken chain reconstruction:  {}\n{indicator}", msg, reconstructed_consumed_tokens);
     }
 
@@ -105,7 +105,7 @@ impl Parser {
 
         let this_statmenet = self.parse_expr();
         Box::new(Node::Return(Return {
-            return_statement: this_statmenet
+            return_statement: this_statmenet,
         }))
     }
 

@@ -33,8 +33,8 @@ pub enum Node {
 #[derive(Clone)]
 pub struct AstSnippet {
     pub name: String,
-    pub args: Vec<SnippetParam>, // <-- snippet *parameters*
-    pub body: Vec<Box<Node>>,    // or whatever your AST body type is
+    pub args: Vec<SnippetParam>,
+    pub body: Vec<Box<Node>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
