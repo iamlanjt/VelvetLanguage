@@ -11,9 +11,21 @@ macro_rules! velvet_error {
     };
 }
 
+#[derive(Clone, Debug)]
+pub struct UserDefinedFn {
+    function: FunctionVal,
+    display: String
+}
+
+#[derive(Clone, Debug)]
+pub enum CallTarget {
+    Internal(String),
+    UserDefined(UserDefinedFn)
+}
+
 pub struct Interpreter {
     ast: Vec<Box<Node>>,
-    call_stack: Vec<String>
+    call_stack: Vec<CallTarget>
 }
 
 impl Interpreter {
@@ -29,7 +41,7 @@ impl Interpreter {
     }
 
     pub fn evaluate_body(&mut self, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
-        self.call_stack.push("velvet::entry_point::evaluate_body(...)".to_string());
+        self.call_stack.push(CallTarget::Internal(String::from("velvet::entry_point::evaluate_body(...)")));
         let ast = self.ast.clone();
         let mut last_result: Box<RuntimeVal> = Box::new(RuntimeVal::NullVal(NullVal {}));
         for node in ast {
@@ -40,18 +52,24 @@ impl Interpreter {
     }
 
     pub fn interpreter_error(&mut self, args: fmt::Arguments<'_>) -> ! {
-        self.call_stack.push("velvet::runtime_error::interpreter_error(...)".to_string());
+        self.call_stack.push(CallTarget::Internal(String::from("velvet::runtime_error::interpreter_error(...)")));
         println!("Velvet Runtime Error\n- {}", format!("{}", args).red().bold());
-        self.call_stack.push("velvet::internal_identifier_exceptions::call_stack_getter".to_string());
+        self.call_stack.push(CallTarget::Internal(String::from("velvet::internal_identifier_exceptions::call_stack_getter")));
 
         let mut end_stack_string = format!(
-            "\n0 = latest call; {} = first call\n{}",
+            "\n0 = latest call; {} = first call; % = Rust thread\n{}",
             self.call_stack.len() - 1,
             format!("{}", "velvet call stack").blue().bold().underline(),
         );
 
         for (index, call) in self.call_stack.iter().rev().enumerate() {
-            end_stack_string += &format!("\n {} -> {}", format!("{}", index).blue().underline().bold(), call);
+            let end_str: String = match call {
+                CallTarget::Internal(i) => "% ".to_owned() + &i.clone(),
+                CallTarget::UserDefined(u) => {
+                    "  ".to_owned() + &u.function.fn_name.clone() + "(" + &u.function.params.join(", ") + ")"
+                }
+            };
+            end_stack_string += &format!("\n {} → {}", format!("{}", index).blue().underline().bold(), end_str);
         }
 
         println!("{}", end_stack_string);
@@ -246,7 +264,7 @@ impl Interpreter {
 
                         return Box::new(RuntimeVal::InternalFunctionVal(InternalFunctionVal {
                             fn_name: "push".into(),
-                            internal_callback: Rc::new(move |args| {
+                            internal_callback: Rc::new(move |args, env| {
                                 let mut borrowed = list_ref.borrow_mut();
                                 borrowed.values.extend(args);
                                 RuntimeVal::ListVal(ListVal { values: borrowed.to_owned().values })
@@ -256,7 +274,7 @@ impl Interpreter {
                     "len" => {
                         return Box::new(RuntimeVal::InternalFunctionVal(InternalFunctionVal {
                             fn_name: "len".into(),
-                            internal_callback: Rc::new(move |args| {
+                            internal_callback: Rc::new(move |args, env| {
                                 RuntimeVal::NumberVal(NumberVal { value: list_for_closure.borrow().len() })
                             }),
                         }));
@@ -362,18 +380,23 @@ impl Interpreter {
 
     fn evaluate_call_expr(&mut self, cexpr: &CallExpr, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
         let caller = self.evaluate(cexpr.caller.clone(), Rc::clone(&env));
-        let callstack_push_name = match &*caller {
+        let callstack_push = match &*caller {
             RuntimeVal::FunctionVal(f) => {
-                format!("{}({})", f.fn_name.clone(), f.params.join(", "))
+                CallTarget::UserDefined(
+                    UserDefinedFn {
+                        function: f.clone(),
+                        display: format!("{}({})", f.fn_name.clone(), f.params.join(", "))
+                    }
+                )
             }
             RuntimeVal::InternalFunctionVal(f) => {
-                format!("velvet::internal_functions::{}(...)", f.fn_name)
+                CallTarget::Internal(format!("velvet::internal_functions::{}(...)", f.fn_name))
             }
             _ => {
-                format!(">>> ILLEGAL CALL -> Caller = \"{:?}\", arglen = {} arg(s)", caller, cexpr.args.len())
+                CallTarget::Internal(format!(">>> ILLEGAL CALL -> Caller = \"{:?}\", arglen = {} arg(s)", caller, cexpr.args.len()))
             }
         };
-        self.call_stack.push(callstack_push_name);
+        self.call_stack.push(callstack_push);
         if self.call_stack.len() > 100 {
             self.call_stack.remove(0);
         }
@@ -395,8 +418,15 @@ impl Interpreter {
                     sub_environment.borrow_mut().declare_var(r#fn.params[i].clone(), *evaluated, "inferred_any".to_string(), false);
                     i = i + 1;
                 }
-                self.call_stack.pop();
-                self.call_stack.push(format!("{}({})", r#fn.fn_name, post_evaluate_args.join(", ")));
+                let old = self.call_stack.pop().unwrap();
+                self.call_stack.push(
+                    match old {
+                        CallTarget::Internal(i) => CallTarget::Internal(format!("{}({})", r#fn.fn_name, post_evaluate_args.join(", "))),
+                        CallTarget::UserDefined(u) => {
+                            CallTarget::UserDefined(UserDefinedFn { function: r#fn.clone(), display: format!("{}({})", r#fn.fn_name, post_evaluate_args.join(", ")) })
+                        }
+                    }
+                );
 
                 let mut last_result: Box<RuntimeVal> = Box::new(RuntimeVal::NullVal(NullVal {  }));
                 for sub_expr in r#fn.execution_body.as_ref() {
@@ -422,7 +452,7 @@ impl Interpreter {
                     post_evaluate_args.push(format!("param{} = {}", index, "unknown"));
                     new_args.push(*evaluated_arg);
                 }
-                let internal_result = (r#fn.internal_callback)(new_args);
+                let internal_result = (r#fn.internal_callback)(new_args, Rc::clone(&env));
                 if Self::auto_reassign_methods().contains(&r#fn.fn_name.as_str()) {
                     match *cexpr.caller.clone() {
                         Node::Identifier(ident) => {
@@ -554,11 +584,18 @@ impl Interpreter {
 
     fn evaluate_identifier(&mut self, identifier: &Identifier, env: Rc<RefCell<SourceEnv>>) -> Box<RuntimeVal> {
         if &identifier.identifier_name == "__CALL_STACK" {
-            self.call_stack.push("velvet::internal_identifier_exceptions::call_stack_getter".to_string());
-            let mut end_stack_string = format!("\n0 = latest call; {} = first call\nvelvet call stack:", self.call_stack.len() - 1);
+            self.call_stack.push(CallTarget::Internal(String::from("velvet::internal_identifier_exceptions::call_stack_getter")));
+            let mut end_stack_string = format!("\n0 = latest call; {} = first call; % = Rust thread\nvelvet call stack:", self.call_stack.len() - 1);
             let mut index = 0;
             for call in self.call_stack.iter().rev() {
-                end_stack_string = end_stack_string + format!("\n {} -> {}", index, call).as_str();
+                match call {
+                    CallTarget::Internal(i) => {
+                        end_stack_string = end_stack_string + format!("\n {} → % {}", index, i).as_str();
+                    }
+                    CallTarget::UserDefined(u) => {
+                        end_stack_string = end_stack_string + format!("\n {} →   {}", index, u.display).as_str();
+                    }
+                }
                 index = index + 1
             }
             self.call_stack.pop();

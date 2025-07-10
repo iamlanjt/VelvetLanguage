@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt, io::Split, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt, io::Split, rc::Rc};
 
-use crate::parser::nodetypes::Node;
+use crate::{parser::nodetypes::Node, runtime::source_environment::source_environment::SourceEnv};
 
 pub type NativeMethod = fn(&RuntimeVal, Vec<RuntimeVal>) -> RuntimeVal;
 
@@ -99,7 +99,7 @@ pub struct IteratorVal {
 #[derive(Clone)]
 pub struct InternalFunctionVal{
     pub fn_name: String,
-    pub internal_callback: Rc<dyn Fn(Vec<RuntimeVal>) -> RuntimeVal>
+    pub internal_callback: Rc<dyn Fn(Vec<RuntimeVal>, Rc<RefCell<SourceEnv>>) -> RuntimeVal>
 }
 
 impl fmt::Debug for InternalFunctionVal {
@@ -153,7 +153,7 @@ impl RuntimeVal {
                 write!(f, "[")?;
                 for (i, val) in lv.values.iter().enumerate() {
                     if i > 0 { write!(f, ", ")?; }
-                    val.fmt_with_indent(f, 0)?;
+                    val.fmt_debug(f)?;
                 }
                 write!(f, "]")
             },

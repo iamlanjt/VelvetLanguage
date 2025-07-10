@@ -7,6 +7,8 @@ use std::env;
 mod tokenizer;
 mod parser;
 mod runtime;
+#[macro_use]
+mod stdlib;
 mod tests;
 
 fn read_ast_from_str(s: &str) -> Vec<Box<Node>> {
