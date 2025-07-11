@@ -1,4 +1,4 @@
-name: Rust
+name: Velvet Test Suite
 
 on:
   push:
