@@ -1,25 +1,61 @@
 # Velvet Programming Language
+Velvet is a flexible, easy-to-understand, open-source programming language built on an actively developed hand-written recursive descent parser, Rust powered interpreter, and developing core language ideas.
 
-**Velvet** is a programming language I am writing in order to learn Rust, and Programming Language Theory more generally. Considering this is being written before the parser is even started, Velvet is going to be an interpreted language. I will try to balance performance with ease of use, but at the end of the day, whatever helps me learn the theory of languages better is what's going to be implemented. Velvet will likely have a V2 which will be compiled, with various fixes of bad implementations (as there are bound to be).
+# Usage
+Once you `cargo build` Velvet (or use `cargo run` directly), you can run the executable and specify a file name to evaluate.
 
-Lexical analysis, parsing, and interpretation are all hand-written features, and no intermediary tools are used.
+```bat
+cargo build --release
+./target/release/velvet.exe my_file.vel
+```
 
-# How to run example
-`cargo run`, assuming you are on the latest version of Rust/Cargo
-Example is located in `./src/testFile.vel` and is hard-coded in the current version.
+```bat
+cargo run -- my_file.vel
+```
 
-# The perfect theoretical Velvet example
-```vel
-// Mutable binding of 0 as an i32 to "my_counter"
-bindm my_counter as i32 = 0
--> add(one as i32, two as i32) => i32 {
-    my_counter += one + two
-    ; my_counter
+# A minimal example
+```
+bind grocery_list as any = [
+    "Apple",
+    "Orange Juice",
+    "Banana",
+    "Orange",
+    "Bagel"
+]
+
+-> is_fruit(item) => bool {
+    assert_type#(item, "string")
+    ; match item {
+        "Apple" => true,
+        "Banana" => true,
+        "Orange" => true
+    } ! false
 }
 
--> main() => i32 {
-    bindm result as i32 = add(2, 2)
-    print(result)
-    ; 0
+for grocery_list_item of grocery_list do {
+    print(grocery_list_item, "is a", match grocery_list_item {
+        is_fruit => "Fruit",
+        "Orange Juice" => "Tasty Drink"
+    } ! "Mystery!!!")
 }
 ```
+
+Assuming everything is working correctly, you can expect your program to output the following:
+
+```
+Apple is a Fruit
+Orange Juice is a Tasty Drink
+Banana is a Fruit
+Orange is a Fruit
+Bagel is a Mystery!!!
+```
+
+# Contributing
+Velvet is open-source and open to contributions by anyone! Any addition to the repo is greatly appreciated. Visit `CONTRIBUTING.md` for a guide on making your first Pull Request!
+
+# Community
+In Velvet's Discord server, there is much more information and guides, as well as a server bot which will allow you to execute Velvet straight from the server!
+
+Join us below:
+
+https://discord.gg/ayEz2xag2s
