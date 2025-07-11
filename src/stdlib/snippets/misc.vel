@@ -1,5 +1,5 @@
 |-> assert_type(target, type, message?) {
-    bind target_type as string = itypeof(target)
+    bind target_type as string = debug.typeof(target)
     if target_type == type {
         ; true
     }
