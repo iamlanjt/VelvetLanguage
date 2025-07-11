@@ -37,7 +37,6 @@ jobs:
               "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             }]
           }
-EOF
 
   build-linux:
     runs-on: ubuntu-latest
@@ -91,7 +90,6 @@ EOF
               "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             }]
           }
-EOF
 
       - name: Send Discord Failure Notification
         if: ${{ failure() }}
@@ -110,4 +108,3 @@ EOF
               "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             }]
           }
-EOF
