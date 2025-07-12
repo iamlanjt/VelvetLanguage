@@ -4,6 +4,7 @@ pub mod rand;
 pub mod debug;
 pub mod process;
 pub mod network;
+pub mod crypto;
 #[macro_use]
 pub mod helpers;
 
@@ -29,6 +30,7 @@ pub fn standard_library_values(sandboxed: bool) -> HashMap<String, RuntimeVal> {
     values.insert("rand".to_string(), rand::rand_module());
     values.insert("process".to_string(), process::process_module());
     values.insert("network".to_string(), network::network_module());
+    values.insert("crypto".to_string(), crypto::crypto_module());
 
     values
 }

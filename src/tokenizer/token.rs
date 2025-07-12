@@ -1,9 +1,7 @@
 use core::fmt;
 
-use serde::{Deserialize, Serialize};
 
-
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum VelvetTokenType {
     Plus,
     Minus,
@@ -94,7 +92,7 @@ impl fmt::Display for VelvetTokenType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct VelvetToken {
     pub kind: VelvetTokenType,
     pub real_size: usize,
