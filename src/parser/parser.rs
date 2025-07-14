@@ -757,7 +757,7 @@ impl Parser {
             VelvetTokenType::Keywrd_Match => {
                 self.parse_match_expr()
             }
-            _ => panic!("This token sequence has no applicable parsing path yet: {}", tk.kind)
+            _ => {self.error(&tk, &format!("This token sequence has no applicable parsing path yet: {}", tk.kind)); panic!()}
         }
     }
 }

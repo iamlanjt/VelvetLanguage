@@ -115,6 +115,10 @@ fn main() {
         false
     };
 
+    let do_profile = if args.iter().find(|p| {
+        *p.to_lowercase() == *"profile"
+    }).is_some() { true } else { false };
+
     // If using intermediate, exit early to not error on non-utf-8 file stream writing to `contents`
     if file_path.ends_with(".imvel") {
         let mut vec_boxes: Vec<Box<Node>> = Vec::new();
@@ -128,7 +132,7 @@ fn main() {
             }
         }
 
-        let mut interp = Interpreter::new(vec_boxes);
+        let mut interp = Interpreter::new(vec_boxes, false);
         interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
         
         return
@@ -220,7 +224,7 @@ fn main() {
         }
     }
 
-    let mut interp = Interpreter::new(ast);
+    let mut interp = Interpreter::new(ast, do_profile);
     interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
 }
 

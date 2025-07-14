@@ -1,3 +1,0 @@
-bindm x as number = 5
-x = x + 3
-print(x)

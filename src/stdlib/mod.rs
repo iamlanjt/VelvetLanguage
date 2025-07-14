@@ -14,6 +14,8 @@ use std::{collections::HashMap, rc::Rc};
 pub fn standard_library_values(sandboxed: bool) -> HashMap<String, RuntimeVal> {
     let mut values = HashMap::new();
 
+    values.insert("null".to_string(), RuntimeVal::NullVal(NullVal {  }));
+
     values.insert("__VELVET_VERSION".to_string(), RuntimeVal::StringVal(StringVal {
         value: env!("CARGO_PKG_VERSION").to_string(),
     }));

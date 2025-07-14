@@ -7,7 +7,7 @@ use crate::{parser::parser::Parser, runtime::{interpreter::Interpreter, source_e
 #[cfg(test)]
 
 fn quick_setup(source: &str) -> Box<RuntimeVal> {
-    return Interpreter::new(Parser::new(source, false).produce_ast()).evaluate_body(
+    return Interpreter::new(Parser::new(source, false).produce_ast(), false).evaluate_body(
         SourceEnv::create_global(false)
     );
 }
@@ -22,7 +22,7 @@ fn test_var_decl_immutable() {
     Interpreter::new(Parser::new(
         "bind test_var as number = 10",
         false
-    ).produce_ast()).evaluate_body(Rc::clone(&env));
+    ).produce_ast(), false).evaluate_body(Rc::clone(&env));
 
     let env_var = env.borrow().fetch(&String::from("test_var"));
 
@@ -45,7 +45,7 @@ fn test_var_decl_mutable() {
     Interpreter::new(Parser::new(
         "bindm test_var as number = 10",
         true
-    ).produce_ast()).evaluate_body(Rc::clone(&env));
+    ).produce_ast(), false).evaluate_body(Rc::clone(&env));
 
     let env_var = env.borrow().fetch(&String::from("test_var"));
 
@@ -68,7 +68,7 @@ fn test_var_mutation() {
     Interpreter::new(Parser::new(
         "bindm test_var as number = 10\ntest_var = 5",
         false
-    ).produce_ast()).evaluate_body(Rc::clone(&env));
+    ).produce_ast(), false).evaluate_body(Rc::clone(&env));
 
     let env_var = env.borrow().fetch(&String::from("test_var"));
 
@@ -92,7 +92,7 @@ fn test_var_mutation_on_immutable_env_var() {
     Interpreter::new(Parser::new(
         "bind test_var as number = 10\ntest_var = 5",
         false
-    ).produce_ast()).evaluate_body(Rc::clone(&env));
+    ).produce_ast(), false).evaluate_body(Rc::clone(&env));
 }
 
 /**
