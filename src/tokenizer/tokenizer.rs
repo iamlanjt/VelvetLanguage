@@ -4,7 +4,7 @@ use colored::Colorize;
 
 use super::token::*;
 
-use std::fs;
+use std::{env, fs};
 use std::path::Path;
 
 fn t_peek(characters: &Vec<char>, cur_idx: usize, amount: usize) -> Option<char> {
@@ -32,19 +32,24 @@ pub fn join_tokenizer_output(output: TokenizerOutput) -> Vec<VelvetToken> {
     basin_snippets
 }
 
+// Notice; fix from 0.1.15 and up, uses a static path based on EXE rather than CWD due to Bug 004.
+// Jul 14 patch
 pub fn load_snippet_sources() -> Vec<String> {
     let mut sources = Vec::new();
-    let dir_path = Path::new("./src/stdlib/snippets");
 
-    if let Ok(entries) = fs::read_dir(dir_path) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
+    let exe_path = env::current_exe().expect("Failed to get current exe path");
+    let snippets_path = exe_path
+        .parent()
+        .unwrap()
+        .join("../../src/stdlib/snippets");
+    let snippets_path = snippets_path.canonicalize().unwrap_or(snippets_path);
 
-                if path.extension().and_then(|ext| ext.to_str()) == Some("vel") {
-                    if let Ok(source) = fs::read_to_string(&path) {
-                        sources.push(source);
-                    }
+    if let Ok(entries) = fs::read_dir(&snippets_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("vel") {
+                if let Ok(source) = fs::read_to_string(&path) {
+                    sources.push(source);
                 }
             }
         }
@@ -52,6 +57,7 @@ pub fn load_snippet_sources() -> Vec<String> {
 
     sources
 }
+
 
 pub struct TokenizerOutput {
     pub real_tokens: Vec<VelvetToken>,
