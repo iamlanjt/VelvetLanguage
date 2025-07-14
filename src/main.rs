@@ -1,20 +1,16 @@
-use crate::{parser::{nodetypes::Node, parser::Parser}, runtime::{interpreter::Interpreter, source_environment::source_environment::EnvVar}, tokenizer::tokenizer::tokenize};
+use crate::{intermediate::intermediate::{deserialize_node, serialize_node}, parser::{nodetypes::{NoOpNode, Node}, parser::Parser}, runtime::{interpreter::Interpreter, source_environment::source_environment::EnvVar}, tokenizer::tokenizer::tokenize};
 use crate::{runtime::source_environment::source_environment::SourceEnv};
-use std::{fs::{self, File}, io::Write, rc::Rc};
-use std::time::Instant;
+use std::{fs::{self, File}, io::{Error, ErrorKind, Write}};
 use std::env;
 
 mod tokenizer;
 mod parser;
 mod runtime;
+mod intermediate;
 #[macro_use]
 mod stdlib;
 mod tests;
 
-fn read_ast_from_str(s: &str) -> Vec<Box<Node>> {
-    let ast: Vec<Box<Node>> = serde_json::from_str(&s).expect("Deserialization failed");
-    ast
-}
 
 fn print_node(node: &Box<Node>, depth: usize) {
     let indent = "    ".repeat(depth);
@@ -93,9 +89,7 @@ fn main() {
     }
 
     let file_path = args[1].clone();
-    let contents = fs::read_to_string(&file_path).unwrap_or_else(|err| {
-        panic!("Unable to execute Velvet file: {:#?}", err)
-    });
+    let mut reader_file = std::fs::File::open(args[1].clone()).unwrap();
 
     let inject_stdlib_snippets = if args.iter().find(|p| {
         *p.to_lowercase() == *"no_stdlib_snippets"
@@ -113,31 +107,50 @@ fn main() {
         false
     };
 
-    let compile_json_ast = if args.iter().find(|p| {
-        *p.to_lowercase() == *"compile_json_ast"
+    let compile_intermediate = if args.iter().find(|p| {
+        *p.to_lowercase() == *"compile_intermediate"
     }).is_some() {
         true
     } else {
         false
     };
 
-    if file_path.ends_with(".imvel") {
-        let ast = read_ast_from_str(&contents);
+    let do_profile = if args.iter().find(|p| {
+        *p.to_lowercase() == *"profile"
+    }).is_some() { true } else { false };
 
-        let mut interp = Interpreter::new(ast);
+    // If using intermediate, exit early to not error on non-utf-8 file stream writing to `contents`
+    if file_path.ends_with(".imvel") {
+        let mut vec_boxes: Vec<Box<Node>> = Vec::new();
+        loop {
+            match deserialize_node(&mut reader_file) {
+                Ok(node) => {
+                    vec_boxes.push(Box::new(node));
+                }
+                Err(e) if e.kind() == ErrorKind::UnexpectedEof => break, // ← normal end-of-file
+                Err(e) => panic!("Failed to deserialize intermediate Velvet file: {e:#?}"),
+            }
+        }
+
+        let mut interp = Interpreter::new(vec_boxes, false);
         interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
+        
         return
     };
+
+    let contents = fs::read_to_string(&file_path).unwrap_or_else(|err| {
+        panic!("Unable to execute Velvet file: {:#?}", err)
+    });
 
     let mut parser = Parser::new(&contents, inject_stdlib_snippets);
     let ast = parser.produce_ast();
 
-    if compile_json_ast {
-        let json_version = serde_json::to_string(&ast).expect("Serialization of AST failed.");
-
-        let file = File::create("./json_ast.imvel");
-        file.unwrap().write_all(json_version.as_bytes()).expect("Failed to write to file");
-        println!("Wrote Intermediate Velvet File to ./json_ast.imvel.");
+    if compile_intermediate {
+        let mut file = File::create("./out.imvel").unwrap();
+        for node in &ast {
+            serialize_node(&mut file, &*node);
+        }
+        println!("Wrote Intermediate Velvet File to ./out.imvel.");
         std::process::exit(0);
     }
 
@@ -211,7 +224,7 @@ fn main() {
         }
     }
 
-    let mut interp = Interpreter::new(ast);
+    let mut interp = Interpreter::new(ast, do_profile);
     interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
 }
 

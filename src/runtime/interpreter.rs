@@ -25,14 +25,22 @@ pub enum CallTarget {
 
 pub struct Interpreter {
     ast: Vec<Box<Node>>,
-    call_stack: Vec<CallTarget>
+    call_stack: Vec<CallTarget>,
+    do_profile: bool,
+    profile_stats: HashMap<String, ProfilerItem>
+}
+
+pub struct ProfilerItem {
+    name: String
 }
 
 impl Interpreter {
-    pub fn new(ast: Vec<Box<Node>>) -> Self {
+    pub fn new(ast: Vec<Box<Node>>, do_profile: bool) -> Self {
         Self {
             ast,
-            call_stack: Vec::new()
+            call_stack: Vec::new(),
+            do_profile,
+            profile_stats: HashMap::new()
         }
     }
 

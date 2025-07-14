@@ -4,6 +4,7 @@ pub mod rand;
 pub mod debug;
 pub mod process;
 pub mod network;
+pub mod crypto;
 #[macro_use]
 pub mod helpers;
 
@@ -12,6 +13,8 @@ use std::{collections::HashMap, rc::Rc};
 
 pub fn standard_library_values(sandboxed: bool) -> HashMap<String, RuntimeVal> {
     let mut values = HashMap::new();
+
+    values.insert("null".to_string(), RuntimeVal::NullVal(NullVal {  }));
 
     values.insert("__VELVET_VERSION".to_string(), RuntimeVal::StringVal(StringVal {
         value: env!("CARGO_PKG_VERSION").to_string(),
@@ -29,6 +32,7 @@ pub fn standard_library_values(sandboxed: bool) -> HashMap<String, RuntimeVal> {
     values.insert("rand".to_string(), rand::rand_module());
     values.insert("process".to_string(), process::process_module());
     values.insert("network".to_string(), network::network_module());
+    values.insert("crypto".to_string(), crypto::crypto_module());
 
     values
 }
