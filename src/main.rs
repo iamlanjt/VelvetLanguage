@@ -1,3 +1,5 @@
+use colored::Colorize;
+
 use crate::runtime::source_environment::source_environment::SourceEnv;
 use crate::{
     intermediate::intermediate::{deserialize_node, serialize_node},
@@ -8,7 +10,10 @@ use crate::{
 use std::env;
 use std::fs::{self, File};
 use std::io::ErrorKind;
+use std::process::Command;
+use std::time::Instant;
 
+mod codegen;
 mod intermediate;
 mod parser;
 mod runtime;
@@ -111,6 +116,8 @@ fn main() {
         .iter()
         .any(|p| *p.to_lowercase() == *"compile_intermediate");
 
+    let compile_ir = args.iter().any(|p| *p.to_lowercase() == *"compile");
+
     let do_profile = args.iter().any(|p| *p.to_lowercase() == *"profile");
 
     // If using intermediate, exit early to not error on non-utf-8 file stream writing to `contents`
@@ -144,6 +151,45 @@ fn main() {
             serialize_node(&mut file, node);
         }
         println!("Wrote Intermediate Velvet File to ./out.imvel.");
+        std::process::exit(0);
+    }
+
+    if compile_ir {
+        println!("{}\n  {}", "Notice!".on_red(), "The `compile` flag is present, so Velvet will attempt to compile your input rather than interpret it.\n  The compiler is still in beta, and behavior may not be uniform between interpretation and compilation methods.".yellow());
+        use crate::codegen::codegen::IRGenerator;
+        let file_name = args.get(1).unwrap();
+        let context = inkwell::context::Context::create();
+        let mut generator = IRGenerator::new(&context, file_name);
+        let start = Instant::now();
+        println!("Compiling `{}`...", file_name);
+
+        generator.generate_ir_for_nodes(ast);
+        let finish_irgen = start.elapsed();
+        let finished_irgen_t = Instant::now();
+        if !fs::exists("./velvet_tmp").unwrap() {
+            fs::create_dir("./velvet_tmp").expect("Failed to create temporary Velvet directory.");
+        }
+
+        generator.emit_object_file("./velvet_tmp/ir.o");
+        let finish_objectgen = finished_irgen_t.elapsed();
+        let finished_objectgen_t = Instant::now();
+        let output = Command::new("clang").args(["./velvet_tmp/ir.o", "-o", "out"]).output().expect("Failed to link your Velvet program! You may have to manually link the object file under ./velvet_tmp/ir.o.");
+        let finish_linking = finished_objectgen_t.elapsed();
+
+        if !output.status.success() {
+            eprintln!("Linker error:\n{}", String::from_utf8_lossy(&output.stderr));
+            std::process::exit(1);
+        }
+
+        fs::remove_dir_all("./velvet_tmp").expect("Failed to remove temporary Velvet directory. You may have to manually remove it at `./velvet_tmp`.");
+
+        let final_time = start.elapsed();
+        println!(
+            "Compilation finished\n | -> IR Generation  : {:?}\n | -> .o emission    : {:?}\n | -> Linking        : {:?}\n | -> Finished in    : {:?}",
+            finish_irgen, finish_objectgen, finish_linking, final_time
+        );
+        println!("Executable generated to `./out`");
+
         std::process::exit(0);
     }
 

@@ -1,7 +1,3 @@
-bindm index as number = 0
-bindm i2 as number = 5
-while index < 100000 do {
-    index = index + 1
-    i2 = i2 / 5 * 2 + 5 - 32
-}
-print(index, i2)
+bindm x as number = 3
+bindm y as number = 22
+print(x * y)

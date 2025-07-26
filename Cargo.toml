@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 rand = "0.9.1"
 colored = "2"
+inkwell = { version = "0.6.0", features = ["llvm17-0"] }
