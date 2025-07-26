@@ -1,11 +1,10 @@
 #[cfg(test)]
-#[allow(warnings)]
-
 use std::{collections::HashMap, vec};
 
-use crate::tokenizer::{token::{VelvetToken, VelvetTokenType}, tokenizer::tokenize};
-
-use super::super::tokenizer;
+use crate::tokenizer::{
+    token::{VelvetToken, VelvetTokenType},
+    tokenizer::tokenize,
+};
 
 #[test]
 fn tokenizer_unit_single_char() {
@@ -27,7 +26,7 @@ fn tokenizer_unit_single_char() {
         (',', VelvetTokenType::Comma),
         ('[', VelvetTokenType::LBracket),
         (']', VelvetTokenType::RBracket),
-        ('.', VelvetTokenType::Dot)
+        ('.', VelvetTokenType::Dot),
     ]);
 
     for unit in &test_characters {
@@ -45,30 +44,39 @@ fn tokenizer_unit_single_char() {
 #[test]
 fn tokenizer_unit_multi_char() {
     let test_phrases = HashMap::from([
-        ("456", VelvetToken {
-            kind: VelvetTokenType::Number,
-            literal_value: String::from("456"),
-            real_size: 3,
-            line: 1,
-            column: 1
-        }),
-        ("'single_.   123  str'", VelvetToken {
-            kind: VelvetTokenType::Str,
-            literal_value: String::from("single_.   123  str"),
-            real_size: ("single_.   123  str").len(),
-            line: 1,
-            column: 1
-        })
+        (
+            "456",
+            VelvetToken {
+                kind: VelvetTokenType::Number,
+                literal_value: String::from("456"),
+                real_size: 3,
+                line: 1,
+                column: 1,
+            },
+        ),
+        (
+            "'single_.   123  str'",
+            VelvetToken {
+                kind: VelvetTokenType::Str,
+                literal_value: String::from("single_.   123  str"),
+                real_size: ("single_.   123  str").len(),
+                line: 1,
+                column: 1,
+            },
+        ),
     ]);
 
     for unit in &test_phrases {
         let result = tokenize(unit.0, false);
-        
+
         assert_eq!(result.real_tokens.len(), 1);
         assert!(result.real_tokens.first().is_some());
-        
+
         assert_eq!(unit.1.kind, result.real_tokens.first().unwrap().kind);
-        assert_eq!(unit.1.literal_value, result.real_tokens.first().unwrap().literal_value);
+        assert_eq!(
+            unit.1.literal_value,
+            result.real_tokens.first().unwrap().literal_value
+        );
     }
 }
 
@@ -82,7 +90,7 @@ fn tokenizer_unit_reserved_keywords() {
         ("do", VelvetTokenType::Keywrd_Do),
         ("if", VelvetTokenType::Keywrd_If),
         ("for", VelvetTokenType::Keywrd_For),
-        ("of", VelvetTokenType::Keywrd_Of)
+        ("of", VelvetTokenType::Keywrd_Of),
     ]);
 
     for tkn in &reserved_tokens {
@@ -100,7 +108,7 @@ fn tokenizer_unit_combinations() {
     let combined_tokens: HashMap<&'static str, VelvetTokenType> = HashMap::from([
         ("->", VelvetTokenType::Arrow),
         ("=>", VelvetTokenType::EqArrow),
-        ("==", VelvetTokenType::DoubleEq)
+        ("==", VelvetTokenType::DoubleEq),
     ]);
 
     for tkn in &combined_tokens {

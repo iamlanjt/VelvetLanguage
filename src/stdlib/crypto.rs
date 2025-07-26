@@ -7,9 +7,11 @@ use crate::runtime::values::*;
 use crate::stdlib::helpers::{internal_fn, object_val};
 
 pub fn crypto_module() -> RuntimeVal {
-    object_val([
-        ("sha", object_val([
-            ("hash256", internal_fn("hash256", |args, env: Rc<RefCell<SourceEnv>>| {
+    object_val([(
+        "sha",
+        object_val([(
+            "hash256",
+            internal_fn("hash256", |args, _: Rc<RefCell<SourceEnv>>| {
                 args![args;
                     StringVal => input,
                     Option<StringVal> => delim = StringVal { value: ",".to_string() }
@@ -18,11 +20,15 @@ pub fn crypto_module() -> RuntimeVal {
                 let parts = input
                     .value
                     .split(&delim.value)
-                    .map(|s| RuntimeVal::StringVal(StringVal { value: s.to_string() }))
+                    .map(|s| {
+                        RuntimeVal::StringVal(StringVal {
+                            value: s.to_string(),
+                        })
+                    })
                     .collect();
 
                 RuntimeVal::ListVal(ListVal { values: parts })
-            }))
-        ]))
-    ])
+            }),
+        )]),
+    )])
 }

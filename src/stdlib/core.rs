@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::args;
 use crate::runtime::source_environment::source_environment::SourceEnv;
-use crate::runtime::values::{RuntimeVal, StringVal, BoolVal, NullVal};
+use crate::runtime::values::{BoolVal, NullVal, RuntimeVal, StringVal};
 use crate::stdlib::helpers::internal_fn;
 
 pub fn print_fn() -> RuntimeVal {
@@ -15,15 +15,15 @@ pub fn print_fn() -> RuntimeVal {
             .join(" ");
 
         println!("{}", output);
-        RuntimeVal::NullVal(NullVal {  })
+        RuntimeVal::NullVal(NullVal {})
     })
 }
 
 pub fn itypeof_fn() -> RuntimeVal {
-    internal_fn("itypeof", |args, env: Rc<RefCell<SourceEnv>>| {
+    internal_fn("itypeof", |args, _: Rc<RefCell<SourceEnv>>| {
         args![args;];
 
-        let val = args.get(0).expect("itypeof requires 1 argument");
+        let val = args.first().expect("itypeof requires 1 argument");
 
         let type_name = match val {
             RuntimeVal::StringVal(_) => "string",
@@ -34,7 +34,7 @@ pub fn itypeof_fn() -> RuntimeVal {
             RuntimeVal::FunctionVal(_) => "function",
             RuntimeVal::InternalFunctionVal(_) => "internal_function",
             RuntimeVal::NumberVal(_) => "number",
-            _ => "unknown"
+            _ => "unknown",
         };
 
         RuntimeVal::StringVal(StringVal {
@@ -54,6 +54,7 @@ pub fn infer_runtime_type(val: &RuntimeVal) -> String {
         RuntimeVal::ListVal(_) => "list",
         RuntimeVal::FunctionVal(_) => "function",
         RuntimeVal::ReturnVal(_) => "return",
-        _ => "unknown"
-    }.to_string()
+        _ => "unknown",
+    }
+    .to_string()
 }

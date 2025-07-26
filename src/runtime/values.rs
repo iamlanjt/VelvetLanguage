@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt, io::Split, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 use crate::{parser::nodetypes::Node, runtime::source_environment::source_environment::SourceEnv};
 
@@ -19,23 +19,23 @@ pub enum RuntimeVal {
     ReturnVal(ReturnVal),
     IteratorVal(IteratorVal),
     ListVal(ListVal),
-    ObjectVal(ObjectVal)
+    ObjectVal(ObjectVal),
 }
 
 impl RuntimeVal {
     pub fn is_null(&self) -> bool {
         matches!(self, RuntimeVal::NullVal(_))
     }
-    
+
     pub fn compare(&self, other: &RuntimeVal, op: &str) -> Result<bool, String> {
         match (self, other) {
             (RuntimeVal::NumberVal(l), RuntimeVal::NumberVal(r)) => {
                 let result = match op {
                     "==" => l.value == r.value,
                     "!=" => l.value != r.value,
-                    "<"  => l.value < r.value,
+                    "<" => l.value < r.value,
                     "<=" => l.value <= r.value,
-                    ">"  => l.value > r.value,
+                    ">" => l.value > r.value,
                     ">=" => l.value >= r.value,
                     _ => return Err(format!("Unknown operator: {}", op)),
                 };
@@ -52,13 +52,11 @@ impl RuntimeVal {
             (RuntimeVal::StringVal(s), RuntimeVal::StringVal(s2)) => {
                 let result = match op {
                     "==" => &s.value == &s2.value,
-                    _ => return Err(format!("Operator '{}' not supported for strings", op))
+                    _ => return Err(format!("Operator '{}' not supported for strings", op)),
                 };
                 Ok(result)
             }
-            (RuntimeVal::NullVal(n), RuntimeVal::BoolVal(b)) => {
-                Ok(false)
-            }
+            (RuntimeVal::NullVal(_), RuntimeVal::BoolVal(_)) => Ok(false),
             _ => Err(format!(
                 "Unsupported comparison between {:?} and {:?}",
                 self, other
@@ -69,37 +67,35 @@ impl RuntimeVal {
 
 #[derive(Debug, Clone)]
 pub struct NumberVal {
-    pub value: isize
+    pub value: isize,
 }
 
 #[derive(Debug, Clone)]
-pub struct NullVal {
-
-}
+pub struct NullVal {}
 
 #[derive(Debug, Clone)]
 pub struct BoolVal {
-    pub value: bool
+    pub value: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionVal {
     pub params: Vec<String>,
     pub fn_name: String,
-    pub execution_body: Rc<Vec<Box<Node>>>,
-    pub is_internal: bool
+    pub execution_body: Rc<Vec<Node>>,
+    pub is_internal: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct IteratorVal {
     pub to_name: String,
-    pub target: Box<RuntimeVal>
+    pub target: Box<RuntimeVal>,
 }
 
 #[derive(Clone)]
-pub struct InternalFunctionVal{
+pub struct InternalFunctionVal {
     pub fn_name: String,
-    pub internal_callback: Rc<dyn Fn(Vec<RuntimeVal>, Rc<RefCell<SourceEnv>>) -> RuntimeVal>
+    pub internal_callback: Rc<dyn Fn(Vec<RuntimeVal>, Rc<RefCell<SourceEnv>>) -> RuntimeVal>,
 }
 
 impl fmt::Debug for InternalFunctionVal {
@@ -110,17 +106,17 @@ impl fmt::Debug for InternalFunctionVal {
 
 #[derive(Debug, Clone)]
 pub struct StringVal {
-    pub value: String
+    pub value: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct ReturnVal {
-    pub value: Box<Node>
+    pub value: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ListVal {
-    pub values: Vec<RuntimeVal>
+    pub values: Vec<RuntimeVal>,
 }
 
 impl ListVal {
@@ -135,7 +131,7 @@ impl ListVal {
 
 #[derive(Debug, Clone)]
 pub struct ObjectVal {
-    pub values: HashMap<String, RuntimeVal>
+    pub values: HashMap<String, RuntimeVal>,
 }
 
 impl RuntimeVal {
@@ -152,15 +148,19 @@ impl RuntimeVal {
             RuntimeVal::ListVal(lv) => {
                 write!(f, "[")?;
                 for (i, val) in lv.values.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     val.fmt_debug(f)?;
                 }
                 write!(f, "]")
-            },
+            }
             RuntimeVal::ObjectVal(ov) => {
                 write!(f, "{{\n")?;
                 for (i, (key, val)) in ov.values.iter().enumerate() {
-                    if i > 0 { write!(f, ",\n")?; }
+                    if i > 0 {
+                        write!(f, ",\n")?;
+                    }
                     write!(f, "{}{}: ", "    ", key)?;
                     val.fmt_with_indent(f, 1)?;
                 }
@@ -175,22 +175,33 @@ impl RuntimeVal {
             RuntimeVal::StringVal(s) => write!(f, "\"{}\"", s.value),
             RuntimeVal::BoolVal(b) => write!(f, "{}", b.value),
             RuntimeVal::NullVal(_) => write!(f, "null"),
-            RuntimeVal::FunctionVal(func) => write!(f, "<function {} ({})>", func.fn_name, func.params.join(", ")),
-            RuntimeVal::InternalFunctionVal(func) => write!(f, "<function::internal {}>",  func.fn_name),
+            RuntimeVal::FunctionVal(func) => write!(
+                f,
+                "<function {} ({})>",
+                func.fn_name,
+                func.params.join(", ")
+            ),
+            RuntimeVal::InternalFunctionVal(func) => {
+                write!(f, "<function::internal {}>", func.fn_name)
+            }
             RuntimeVal::ReturnVal(r) => write!(f, "{:#?}", r.value),
             RuntimeVal::IteratorVal(i) => write!(f, "<iterator {}>", i.to_name),
             RuntimeVal::ListVal(lv) => {
                 write!(f, "[")?;
                 for (i, val) in lv.values.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     val.fmt_with_indent(f, 0)?;
                 }
                 write!(f, "]")
-            },
+            }
             RuntimeVal::ObjectVal(ov) => {
                 write!(f, "{{\n")?;
                 for (i, (key, val)) in ov.values.iter().enumerate() {
-                    if i > 0 { write!(f, ",\n")?; }
+                    if i > 0 {
+                        write!(f, ",\n")?;
+                    }
                     write!(f, "{}{}: ", "    ", key)?;
                     val.fmt_with_indent(f, 1)?;
                 }
@@ -214,7 +225,9 @@ impl RuntimeVal {
             RuntimeVal::ListVal(lv) => {
                 write!(f, "[")?;
                 for (i, val) in lv.values.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     val.fmt_with_indent(f, depth)?;
                 }
                 write!(f, "]")
@@ -222,7 +235,9 @@ impl RuntimeVal {
             RuntimeVal::ObjectVal(ov) => {
                 write!(f, "{{\n")?;
                 for (i, (key, val)) in ov.values.iter().enumerate() {
-                    if i > 0 { write!(f, ",\n")?; }
+                    if i > 0 {
+                        write!(f, ",\n")?;
+                    }
                     write!(f, "{}{}: ", indent.clone() + "    ", key)?;
                     val.fmt_with_indent(f, depth + 1)?;
                 }

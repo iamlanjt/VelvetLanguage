@@ -1,5 +1,17 @@
-use std::{collections::HashMap, io::{self, Read, Write}, rc::Rc};
-use crate::{parser::nodetypes::{AssignmentExpr, BinaryExpr, Block, BoolLiteral, CallExpr, Comparator, FunctionDefinition, Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, Node, NullLiteral, NullishCoalescing, NumericLiteral, ObjectLiteral, OptionalArg, Return, StringLiteral, VarDeclaration, WhileStmt}, tokenizer::token::{VelvetToken, VelvetTokenType}};
+use crate::{
+    parser::nodetypes::{
+        AssignmentExpr, BinaryExpr, Block, BoolLiteral, CallExpr, Comparator, FunctionDefinition,
+        Identifier, IfStmt, Iterator, ListLiteral, MatchExpr, MemberExpr, Node, NullLiteral,
+        NullishCoalescing, NumericLiteral, ObjectLiteral, OptionalArg, Return, StringLiteral,
+        VarDeclaration, WhileStmt,
+    },
+    tokenizer::token::{VelvetToken, VelvetTokenType},
+};
+use std::{
+    collections::HashMap,
+    io::{self, Read, Write},
+    rc::Rc,
+};
 
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +40,7 @@ pub enum NodeKindId {
     NullishCoalescing,
     Block,
     NullLiteral,
+    InterpreterBlock,
 }
 
 impl From<&Node> for NodeKindId {
@@ -57,6 +70,7 @@ impl From<&Node> for NodeKindId {
             Node::NullishCoalescing(_) => NodeKindId::NullishCoalescing,
             Node::Block(_) => NodeKindId::Block,
             Node::NullLiteral(_) => NodeKindId::NullLiteral,
+            Node::InterpreterBlock(_) => NodeKindId::InterpreterBlock,
         }
     }
 }
@@ -107,7 +121,10 @@ pub fn read_node_kind<R: Read>(reader: &mut R) -> io::Result<NodeKindId> {
     reader.read_exact(&mut buf)?;
     let val = u16::from_be_bytes(buf);
     NodeKindId::from_u16(val).ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidData, format!("Unknown node kind: {}", val))
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Unknown node kind: {}", val),
+        )
     })
 }
 
@@ -134,10 +151,12 @@ pub fn read_string<R: Read>(reader: &mut R) -> io::Result<String> {
             Ok(String::from_utf8(buf).unwrap())
         }
 
-        _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid string signifier")),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid string signifier",
+        )),
     }
 }
-
 
 pub fn read_number<R: Read>(reader: &mut R) -> io::Result<f64> {
     let mut tag_buf = [0u8; 1];
@@ -172,12 +191,14 @@ pub fn read_number<R: Read>(reader: &mut R) -> io::Result<f64> {
     }
 }
 
-
 pub fn read_bool<R: Read>(reader: &mut R) -> io::Result<bool> {
     let mut tag = [0u8];
     reader.read_exact(&mut tag)?;
     if tag[0] != Signifier::LiteralBool.to_byte() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Expected LiteralBool signifier"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Expected LiteralBool signifier",
+        ));
     }
 
     let mut val = [0u8];
@@ -185,7 +206,10 @@ pub fn read_bool<R: Read>(reader: &mut R) -> io::Result<bool> {
     match val[0] {
         0 => Ok(false),
         1 => Ok(true),
-        _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid boolean value")),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid boolean value",
+        )),
     }
 }
 
@@ -205,20 +229,30 @@ pub fn read_token<R: Read>(reader: &mut R) -> io::Result<VelvetToken> {
 
     reader.read_exact(&mut byte)?;
     if byte[0] != Signifier::StartToken.to_byte() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Expected StartToken"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Expected StartToken",
+        ));
     }
 
     let mut kind_buf = [0u8; 2];
     reader.read_exact(&mut kind_buf)?;
     let kind_val = u16::from_be_bytes(kind_buf);
-    let kind = VelvetTokenType::try_from(kind_val as u8)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("Unknown token kind {}", kind_val)))?;
+    let kind = VelvetTokenType::try_from(kind_val as u8).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Unknown token kind {}", kind_val),
+        )
+    })?;
 
     let literal_value = read_string(reader)?;
 
     reader.read_exact(&mut byte)?;
     if byte[0] != Signifier::EndToken.to_byte() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Expected EndToken"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Expected EndToken",
+        ));
     }
 
     Ok(VelvetToken {
@@ -229,8 +263,6 @@ pub fn read_token<R: Read>(reader: &mut R) -> io::Result<VelvetToken> {
         column: 0,
     })
 }
-
-
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,7 +321,6 @@ pub fn write_string<W: Write>(writer: &mut W, value: &str) -> io::Result<()> {
     Ok(())
 }
 
-
 pub fn write_number<W: Write>(writer: &mut W, value: f64) -> io::Result<()> {
     if value.fract() != 0.0 || value < 0.0 {
         writer.write_all(&[Signifier::NumF64.to_byte()])?;
@@ -315,7 +346,6 @@ pub fn write_number<W: Write>(writer: &mut W, value: f64) -> io::Result<()> {
 pub fn write_null<W: Write>(writer: &mut W) {
     writer.write_all(&[Signifier::Null.to_byte()]).unwrap();
 }
-
 
 pub fn write_bool<W: Write>(writer: &mut W, value: bool) -> io::Result<()> {
     writer.write_all(&[Signifier::LiteralBool.to_byte()])?;
@@ -346,10 +376,10 @@ pub fn serialize_node<W: Write>(writer: &mut W, node: &Node) {
         Node::VarDeclaration(vdecl) => {
             // write mutability
             write_bool(writer, vdecl.is_mutable).unwrap();
-            
+
             // write identifier
             write_string(writer, &vdecl.var_identifier).unwrap();
-            
+
             // write type
             write_string(writer, &vdecl.var_type).unwrap();
 
@@ -378,7 +408,7 @@ pub fn serialize_node<W: Write>(writer: &mut W, node: &Node) {
             write_number(writer, ll.props.len() as f64).unwrap();
 
             for prop in &ll.props {
-                serialize_node(writer, &prop);
+                serialize_node(writer, prop);
             }
         }
         Node::ObjectLiteral(obj) => {
@@ -386,9 +416,9 @@ pub fn serialize_node<W: Write>(writer: &mut W, node: &Node) {
             write_number(writer, obj.props.len() as f64).unwrap();
 
             for prop in &obj.props {
-                // write key name 
+                // write key name
                 write_string(writer, prop.0.as_str()).unwrap();
-                
+
                 // write actual prop
                 serialize_node(writer, prop.1);
             }
@@ -412,19 +442,19 @@ pub fn serialize_node<W: Write>(writer: &mut W, node: &Node) {
             write_number(writer, fdef.body.len() as f64).unwrap();
             let bodyclone = Rc::clone(&fdef.body);
             for b in bodyclone.iter() {
-                serialize_node(writer, &*b);
+                serialize_node(writer, b);
             }
 
             write_string(writer, &fdef.return_type).unwrap();
         }
-        
+
         Node::CallExpr(cexpr) => {
             // write arg count
             write_number(writer, cexpr.args.len() as f64).unwrap();
 
             for arg in &cexpr.args {
                 // write arg
-                serialize_node(writer, &arg);
+                serialize_node(writer, arg);
             }
 
             // write caller
@@ -484,10 +514,10 @@ pub fn serialize_node<W: Write>(writer: &mut W, node: &Node) {
                 serialize_node(writer, b);
             }
         }
-        Node::NullLiteral(n) => {
+        Node::NullLiteral(_) => {
             write_null(writer);
         }
-        _ => todo!("Match node {:?} in serializer.", node)
+        _ => todo!("Match node {:?} in serializer.", node),
     }
 
     writer.write_all(&[Signifier::EndNode.to_byte()]).unwrap();
@@ -498,7 +528,10 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
     let mut tag = [0u8];
     reader.read_exact(&mut tag)?;
     if tag[0] != Signifier::StartNode.to_byte() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Expected START_NODE"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Expected START_NODE",
+        ));
     }
 
     // 2. Read the node kind
@@ -527,7 +560,12 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
             let t = read_string(reader)?;
             let val = Box::new(deserialize_node(reader)?);
 
-            Node::VarDeclaration(VarDeclaration {is_mutable: mutability, var_identifier: ident, var_type: t, var_value: val})
+            Node::VarDeclaration(VarDeclaration {
+                is_mutable: mutability,
+                var_identifier: ident,
+                var_type: t,
+                var_value: val,
+            })
         }
 
         NodeKindId::AssignmentExpr => {
@@ -537,13 +575,11 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
             Node::AssignmentExpr(AssignmentExpr { left, value })
         }
 
-        NodeKindId::Comparator => {
-            Node::Comparator(Comparator {
-                lhs: Box::new(deserialize_node(reader).unwrap()),
-                rhs: Box::new(deserialize_node(reader).unwrap()),
-                op: read_string(reader).unwrap()
-            })
-        }
+        NodeKindId::Comparator => Node::Comparator(Comparator {
+            lhs: Box::new(deserialize_node(reader).unwrap()),
+            rhs: Box::new(deserialize_node(reader).unwrap()),
+            op: read_string(reader).unwrap(),
+        }),
 
         NodeKindId::ListLiteral => {
             let mut props = Vec::new();
@@ -551,30 +587,30 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
             let amount = read_number(reader).unwrap() as usize;
 
             while props.len() < amount {
-                props.push(Box::new(deserialize_node(reader).unwrap()));
+                props.push(deserialize_node(reader).unwrap());
             }
 
-            Node::ListLiteral(ListLiteral {
-                props
-            })
+            Node::ListLiteral(ListLiteral { props })
         }
 
         NodeKindId::Identifier => {
             let name = read_string(reader)?;
 
-            Node::Identifier(Identifier { identifier_name: name })
+            Node::Identifier(Identifier {
+                identifier_name: name,
+            })
         }
 
         NodeKindId::CallExpr => {
             let arg_count = read_number(reader)?;
-            let mut args: Vec<Box<Node>> = Vec::new();
-            
+            let mut args: Vec<Node> = Vec::new();
+
             while args.len() < arg_count as usize {
-                args.push(Box::new(deserialize_node(reader)?));
-            };
+                args.push(deserialize_node(reader)?);
+            }
 
             let caller = Box::new(deserialize_node(reader)?);
-            
+
             Node::CallExpr(CallExpr { args, caller })
         }
 
@@ -586,7 +622,7 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
             Node::MemberExpr(MemberExpr {
                 object,
                 property: prop,
-                is_computed: computed
+                is_computed: computed,
             })
         }
 
@@ -594,16 +630,16 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
             let condition = Box::new(deserialize_node(reader).unwrap());
             let mut body = Vec::new();
             let count = read_number(reader).unwrap() as usize;
-            
+
             while body.len() < count {
-                body.push(Box::new(deserialize_node(reader).unwrap()));
+                body.push(deserialize_node(reader).unwrap());
             }
             Node::WhileStmt(WhileStmt { condition, body })
         }
 
-        NodeKindId::StringLiteral => {
-            Node::StringLiteral(StringLiteral { literal_value: read_string(reader).unwrap() })
-        }
+        NodeKindId::StringLiteral => Node::StringLiteral(StringLiteral {
+            literal_value: read_string(reader).unwrap(),
+        }),
 
         NodeKindId::IfStmt => {
             let condition = Box::new(deserialize_node(reader).unwrap());
@@ -611,23 +647,23 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
 
             let count = read_number(reader).unwrap() as usize;
             while body.len() < count {
-                body.push(Box::new(deserialize_node(reader).unwrap()));
+                body.push(deserialize_node(reader).unwrap());
             }
 
-            Node::IfStmt(IfStmt {condition, body})
+            Node::IfStmt(IfStmt { condition, body })
         }
 
         NodeKindId::Iterator => {
             let left = read_token(reader).unwrap();
             let right = Box::new(deserialize_node(reader).unwrap());
-            let mut body = Vec::new(); 
+            let mut body = Vec::new();
 
             let count = read_number(reader).unwrap() as usize;
             while body.len() < count {
-                body.push(Box::new(deserialize_node(reader).unwrap()));
+                body.push(deserialize_node(reader).unwrap());
             }
 
-            Node::Iterator(Iterator {left, right, body})
+            Node::Iterator(Iterator { left, right, body })
         }
 
         NodeKindId::MatchExpr => {
@@ -635,49 +671,45 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
             let mut arms = Vec::new();
             let count = read_number(reader).unwrap() as usize;
             while arms.len() < count {
-                let left = Box::new(deserialize_node(reader).unwrap());
-                let right = Box::new(deserialize_node(reader).unwrap());
+                let left = deserialize_node(reader).unwrap();
+                let right = deserialize_node(reader).unwrap();
 
                 arms.push((left, right));
             }
-            
-            Node::MatchExpr(MatchExpr {
-                target,
-                arms
-            })
+
+            Node::MatchExpr(MatchExpr { target, arms })
         }
 
-        NodeKindId::BoolLiteral => {
-            Node::BoolLiteral(BoolLiteral {literal_value: read_bool(reader).unwrap()})
-        }
+        NodeKindId::BoolLiteral => Node::BoolLiteral(BoolLiteral {
+            literal_value: read_bool(reader).unwrap(),
+        }),
 
-        NodeKindId::OptionalArg => {
-            Node::OptionalArg(OptionalArg { arg: Box::new(deserialize_node(reader).unwrap()) })
-        }
+        NodeKindId::OptionalArg => Node::OptionalArg(OptionalArg {
+            arg: Box::new(deserialize_node(reader).unwrap()),
+        }),
 
-        NodeKindId::NullishCoalescing => {
-            Node::NullishCoalescing(NullishCoalescing {
-                left: Box::new(deserialize_node(reader).unwrap()),
-                right: Box::new(deserialize_node(reader).unwrap())
-            })
-        }
+        NodeKindId::NullishCoalescing => Node::NullishCoalescing(NullishCoalescing {
+            left: Box::new(deserialize_node(reader).unwrap()),
+            right: Box::new(deserialize_node(reader).unwrap()),
+        }),
 
         NodeKindId::Block => {
             let mut body = Vec::new();
             let count = read_number(reader).unwrap() as usize;
             while body.len() < count {
-                body.push(Box::new(deserialize_node(reader).unwrap()));
+                body.push(deserialize_node(reader).unwrap());
             }
-            Node::Block(Block {
-                body
-            })
+            Node::Block(Block { body })
         }
 
         NodeKindId::NullLiteral => {
             let mut null_byte = [0u8];
             reader.read_exact(&mut null_byte)?;
             if Signifier::from_byte(null_byte[0]) != Some(Signifier::Null) {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "Expected Signifier::Null"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Expected Signifier::Null",
+                ));
             }
 
             Node::NullLiteral(NullLiteral {})
@@ -685,7 +717,9 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
 
         NodeKindId::Return => {
             let this_node = Box::new(deserialize_node(reader).unwrap());
-            Node::Return(Return { return_statement: this_node })
+            Node::Return(Return {
+                return_statement: this_node,
+            })
         }
 
         NodeKindId::ObjectLiteral => {
@@ -694,16 +728,11 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
 
             while props.len() < prop_count {
                 let prop_name = read_string(reader).unwrap();
-                let prop_value = Box::new(deserialize_node(reader).unwrap());
-                props.insert(
-                    prop_name,
-                    prop_value
-                );
+                let prop_value = deserialize_node(reader).unwrap();
+                props.insert(prop_name, prop_value);
             }
 
-            Node::ObjectLiteral(ObjectLiteral {
-                props
-            })
+            Node::ObjectLiteral(ObjectLiteral { props })
         }
 
         NodeKindId::FunctionDefinition => {
@@ -712,13 +741,13 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
             while params.len() < pcount {
                 params.push(read_string(reader).unwrap());
             }
-            
+
             let fn_name = read_string(reader).unwrap();
 
             let mut body = Vec::new();
             let bcount = read_number(reader).unwrap() as usize;
             while body.len() < bcount {
-                body.push(Box::new(deserialize_node(reader).unwrap()));
+                body.push(deserialize_node(reader).unwrap());
             }
 
             let fn_ret_type = read_string(reader).unwrap();
@@ -727,19 +756,26 @@ pub fn deserialize_node<R: Read>(reader: &mut R) -> io::Result<Node> {
                 params,
                 name: fn_name,
                 body: Rc::new(body),
-                return_type: fn_ret_type
+                return_type: fn_ret_type,
             })
         }
 
-        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Unimplemented node kind: {:?}", kind))),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Unimplemented node kind: {:?}", kind),
+            ));
+        }
     };
 
     // 4. Expect END_NODE
     reader.read_exact(&mut tag)?;
     if tag[0] != Signifier::EndNode.to_byte() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Expected END_NODE for kind {:?}", kind)));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Expected END_NODE for kind {:?}", kind),
+        ));
     }
 
     Ok(node)
 }
-

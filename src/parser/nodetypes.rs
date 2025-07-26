@@ -27,12 +27,19 @@ pub enum Node {
     NoOpNode(NoOpNode),
     NullishCoalescing(NullishCoalescing),
     Block(Block),
-    NullLiteral(NullLiteral)
+    NullLiteral(NullLiteral),
+    InterpreterBlock(InterpreterBlock),
 }
 #[derive(Clone)]
 pub struct AstSnippet {
     pub name: String,
     pub args: Vec<SnippetParam>,
+    pub body: Vec<Node>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InterpreterBlock {
+    pub feature: String,
     pub body: Vec<Box<Node>>,
 }
 
@@ -41,13 +48,13 @@ pub struct NullLiteral;
 
 #[derive(Debug, Clone)]
 pub struct Block {
-    pub body: Vec<Box<Node>>
+    pub body: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct NullishCoalescing {
     pub left: Box<Node>,
-    pub right: Box<Node>
+    pub right: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,75 +64,71 @@ pub struct SnippetParam {
 }
 
 #[derive(Debug, Clone)]
-pub struct NoOpNode {
-
-}
+pub struct NoOpNode {}
 
 #[derive(Debug, Clone)]
 pub struct OptionalArg {
-    pub arg: Box<Node>
+    pub arg: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct WhileStmt {
     pub condition: Box<Node>,
-    pub body: Vec<Box<Node>>
+    pub body: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct IfStmt {
     pub condition: Box<Node>,
-    pub body: Vec<Box<Node>>
+    pub body: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Eof {
-    
-}
+pub struct Eof {}
 
 #[derive(Debug, Clone)]
 pub struct BinaryExpr {
     pub left: Box<Node>,
     pub right: Box<Node>,
-    pub op: String
+    pub op: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct AssignmentExpr {
     pub left: Box<Node>,
-    pub value: Box<Node>
+    pub value: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Iterator {
     pub left: VelvetToken,
     pub right: Box<Node>,
-    pub body: Vec<Box<Node>>
+    pub body: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionDefinition {
     pub params: Vec<String>,
     pub name: String,
-    pub body: Rc<Vec<Box<Node>>>,
-    pub return_type: String
+    pub body: Rc<Vec<Node>>,
+    pub return_type: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Comparator {
     pub lhs: Box<Node>,
     pub rhs: Box<Node>,
-    pub op: String
+    pub op: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Identifier {
-    pub identifier_name: String
+    pub identifier_name: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Return {
-    pub return_statement: Box<Node>
+    pub return_statement: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
@@ -133,50 +136,50 @@ pub struct VarDeclaration {
     pub is_mutable: bool,
     pub var_identifier: String,
     pub var_type: String,
-    pub var_value: Box<Node>
+    pub var_value: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CallExpr {
-    pub args: Vec<Box<Node>>,
-    pub caller: Box<Node>
+    pub args: Vec<Node>,
+    pub caller: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MatchExpr {
     pub target: Box<Node>,
-    pub arms: Vec<(Box<Node>, Box<Node>)>
+    pub arms: Vec<(Node, Node)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MemberExpr {
     pub object: Box<Node>,
     pub property: Box<Node>,
-    pub is_computed: bool
+    pub is_computed: bool,
 }
 
 // Literals
 #[derive(Debug, Clone)]
 pub struct NumericLiteral {
-    pub literal_value: String
+    pub literal_value: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct BoolLiteral {
-    pub literal_value: bool
+    pub literal_value: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct ListLiteral {
-    pub props: Vec<Box<Node>>
+    pub props: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ObjectLiteral {
-    pub props: HashMap<String, Box<Node>>
+    pub props: HashMap<String, Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StringLiteral {
-    pub literal_value: String
+    pub literal_value: String,
 }

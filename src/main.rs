@@ -1,24 +1,29 @@
-use crate::{intermediate::intermediate::{deserialize_node, serialize_node}, parser::{nodetypes::{NoOpNode, Node}, parser::Parser}, runtime::{interpreter::Interpreter, source_environment::source_environment::EnvVar}, tokenizer::tokenizer::tokenize};
-use crate::{runtime::source_environment::source_environment::SourceEnv};
-use std::{fs::{self, File}, io::{Error, ErrorKind, Write}};
+use crate::runtime::source_environment::source_environment::SourceEnv;
+use crate::{
+    intermediate::intermediate::{deserialize_node, serialize_node},
+    parser::{nodetypes::Node, parser::Parser},
+    runtime::interpreter::Interpreter,
+    tokenizer::tokenizer::tokenize,
+};
 use std::env;
+use std::fs::{self, File};
+use std::io::ErrorKind;
 
-mod tokenizer;
+mod intermediate;
 mod parser;
 mod runtime;
-mod intermediate;
+mod tokenizer;
 #[macro_use]
 mod stdlib;
 mod tests;
 
-
-fn print_node(node: &Box<Node>, depth: usize) {
+fn print_node(node: &Node, depth: usize) {
     let indent = "    ".repeat(depth);
 
-    match node.as_ref() {
+    match node {
         Node::Block(b) => {
             for x in b.body.clone() {
-                print_node(&x, depth)
+                print_node(&Box::new(x), depth)
             }
         }
         Node::NumericLiteral(n) => {
@@ -32,7 +37,12 @@ fn print_node(node: &Box<Node>, depth: usize) {
             print_node(&b.right, depth + 1);
         }
         Node::VarDeclaration(decl) => {
-            println!("{}{}->Binding: {}", indent, if decl.is_mutable { "Mutable" } else {""}, decl.var_type);
+            println!(
+                "{}{}->Binding: {}",
+                indent,
+                if decl.is_mutable { "Mutable" } else { "" },
+                decl.var_type
+            );
             println!("{}    ident_name: \"{}\"", indent, decl.var_identifier);
             println!("{}    value:", indent);
             print_node(&decl.var_value, depth + 2);
@@ -43,7 +53,7 @@ fn print_node(node: &Box<Node>, depth: usize) {
             println!("{}    body node count: {}", indent, f.body.len());
             println!("{}    body expanded:", indent);
             for sub_node in f.body.as_ref() {
-                print_node(&sub_node, depth + 2);
+                print_node(&Box::new(sub_node.clone()), depth + 2);
             }
         }
         Node::IfStmt(i) => {
@@ -52,7 +62,7 @@ fn print_node(node: &Box<Node>, depth: usize) {
             print_node(&i.condition, depth + 2);
             println!("{}    if body:", indent);
             for sub_node in i.body.clone() {
-                print_node(&sub_node, depth + 2);
+                print_node(&Box::new(sub_node), depth + 2);
             }
         }
         Node::Return(r) => {
@@ -66,7 +76,7 @@ fn print_node(node: &Box<Node>, depth: usize) {
             print_node(&cexpr.caller, depth + 2);
             println!("{}    args:", indent);
             for arg in cexpr.args.clone() {
-                print_node(&arg, depth + 2);
+                print_node(&Box::new(arg), depth + 2);
             }
         }
         Node::StringLiteral(strlit) => {
@@ -91,41 +101,25 @@ fn main() {
     let file_path = args[1].clone();
     let mut reader_file = std::fs::File::open(args[1].clone()).unwrap();
 
-    let inject_stdlib_snippets = if args.iter().find(|p| {
-        *p.to_lowercase() == *"no_stdlib_snippets"
-    }).is_some() {
-        false
-    } else {
-        true
-    };
+    let inject_stdlib_snippets = !args
+        .iter()
+        .any(|p| *p.to_lowercase() == *"no_stdlib_snippets");
 
-    let is_sandboxed = if args.iter().find(|p| {
-        *p.to_lowercase() == *"sandbox"
-    }).is_some() {
-        true
-    } else {
-        false
-    };
+    let is_sandboxed = args.iter().any(|p| *p.to_lowercase() == *"sandbox");
 
-    let compile_intermediate = if args.iter().find(|p| {
-        *p.to_lowercase() == *"compile_intermediate"
-    }).is_some() {
-        true
-    } else {
-        false
-    };
+    let compile_intermediate = args
+        .iter()
+        .any(|p| *p.to_lowercase() == *"compile_intermediate");
 
-    let do_profile = if args.iter().find(|p| {
-        *p.to_lowercase() == *"profile"
-    }).is_some() { true } else { false };
+    let do_profile = args.iter().any(|p| *p.to_lowercase() == *"profile");
 
     // If using intermediate, exit early to not error on non-utf-8 file stream writing to `contents`
     if file_path.ends_with(".imvel") {
-        let mut vec_boxes: Vec<Box<Node>> = Vec::new();
+        let mut vec_boxes: Vec<Node> = Vec::new();
         loop {
             match deserialize_node(&mut reader_file) {
                 Ok(node) => {
-                    vec_boxes.push(Box::new(node));
+                    vec_boxes.push(node);
                 }
                 Err(e) if e.kind() == ErrorKind::UnexpectedEof => break, // ← normal end-of-file
                 Err(e) => panic!("Failed to deserialize intermediate Velvet file: {e:#?}"),
@@ -134,13 +128,12 @@ fn main() {
 
         let mut interp = Interpreter::new(vec_boxes, false);
         interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
-        
-        return
+
+        return;
     };
 
-    let contents = fs::read_to_string(&file_path).unwrap_or_else(|err| {
-        panic!("Unable to execute Velvet file: {:#?}", err)
-    });
+    let contents = fs::read_to_string(&file_path)
+        .unwrap_or_else(|err| panic!("Unable to execute Velvet file: {:#?}", err));
 
     let mut parser = Parser::new(&contents, inject_stdlib_snippets);
     let ast = parser.produce_ast();
@@ -148,49 +141,71 @@ fn main() {
     if compile_intermediate {
         let mut file = File::create("./out.imvel").unwrap();
         for node in &ast {
-            serialize_node(&mut file, &*node);
+            serialize_node(&mut file, node);
         }
         println!("Wrote Intermediate Velvet File to ./out.imvel.");
         std::process::exit(0);
     }
 
-    if args.iter().find(|p| {
-        *p.to_lowercase() == *"do_dump_tokens"
-    }).is_some() {
+    if args.iter().any(|p| *p.to_lowercase() == *"do_dump_tokens") {
         let tokenizer_results = tokenize(&contents, inject_stdlib_snippets);
         println!("[Stdlib Snippet Token Dump]");
-        println!("\t-> <ommitted {} snippet group(s): not useful for debugging; snippets available via source at https://www.github.com/iamlanjt/velvetlanguage src/stdlib/snippets>", tokenizer_results.snippet_tokens.len());
-    
-        println!("\n[Pure Token Dump]: {} item(s)", tokenizer_results.real_tokens.len());
-        let label_width = tokenizer_results.real_tokens.iter()
+        println!(
+            "\t-> <ommitted {} snippet group(s): not useful for debugging; snippets available via source at https://www.github.com/iamlanjt/velvetlanguage src/stdlib/snippets>",
+            tokenizer_results.snippet_tokens.len()
+        );
+
+        println!(
+            "\n[Pure Token Dump]: {} item(s)",
+            tokenizer_results.real_tokens.len()
+        );
+        let label_width = tokenizer_results
+            .real_tokens
+            .iter()
             .map(|t| format!("Token {}", t.kind).len())
             .max()
-            .unwrap_or(0) + 3;
+            .unwrap_or(0)
+            + 3;
 
-        let value_width = tokenizer_results.real_tokens.iter()
+        let value_width = tokenizer_results
+            .real_tokens
+            .iter()
             .map(|t| t.literal_value.len())
             .max()
-            .unwrap_or(0) + 3;
+            .unwrap_or(0)
+            + 3;
 
-        let line_width = tokenizer_results.real_tokens.iter()
+        let line_width = tokenizer_results
+            .real_tokens
+            .iter()
             .map(|t| t.line.to_string().len())
             .max()
-            .unwrap_or(0) + 2;
+            .unwrap_or(0)
+            + 2;
 
-        let col_width = tokenizer_results.real_tokens.iter()
+        let col_width = tokenizer_results
+            .real_tokens
+            .iter()
             .map(|t| t.column.to_string().len())
             .max()
-            .unwrap_or(0) + 2;
+            .unwrap_or(0)
+            + 2;
 
-        let end_line_width = tokenizer_results.real_tokens.iter()
+        let end_line_width = tokenizer_results
+            .real_tokens
+            .iter()
             .map(|t| (t.line).to_string().len())
             .max()
-            .unwrap_or(0) + 2;
+            .unwrap_or(0)
+            + 2;
 
-        let end_col_width = tokenizer_results.real_tokens.iter()
+        let end_col_width = tokenizer_results
+            .real_tokens
+            .iter()
             .map(|t| (t.column + t.real_size).to_string().len())
             .max()
-            .unwrap_or(0) + 2;
+            .unwrap_or(0)
+            + 2;
 
         for t in tokenizer_results.real_tokens {
             let label = format!("Token {}", t.kind);
@@ -211,13 +226,9 @@ fn main() {
                 value_w = value_width
             );
         }
-
-
     }
 
-    if args.iter().find(|p| {
-        *p.to_lowercase() == *"do_dump_ast"
-    }).is_some() {
+    if args.iter().any(|p| *p.to_lowercase() == *"do_dump_ast") {
         println!("[AST Dump]");
         for inner_node in &ast {
             print_node(inner_node, 0);
@@ -253,7 +264,7 @@ fn main() {
     let lexer_start_time = Instant::now();
     let tokenizer_result = tokenize(&contents);
     println!("[Program Step 1] Lexical analysis finished in {:.2?}\n", lexer_start_time.elapsed());
-    
+
     if DO_DUMP_TOKENS {
         for this_token in &tokenizer_result {
             let label = format!("Token {}", this_token.kind);
@@ -266,7 +277,7 @@ fn main() {
     let parser_start_time = Instant::now();
     let mut parser = Parser::new(&contents);
     let result = parser.produce_ast();
-    
+
     println!("[Program Step 2] AST Generation finished in {:.2?}\n", parser_start_time.elapsed());
 
     if DO_DUMP_AST {
