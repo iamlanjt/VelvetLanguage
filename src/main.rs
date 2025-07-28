@@ -1,4 +1,5 @@
 use colored::Colorize;
+use rand::Rng;
 
 use crate::runtime::source_environment::source_environment::SourceEnv;
 use crate::{
@@ -166,27 +167,65 @@ fn main() {
         generator.generate_ir_for_nodes(ast);
         let finish_irgen = start.elapsed();
         let finished_irgen_t = Instant::now();
+
         if !fs::exists("./velvet_tmp").unwrap() {
             fs::create_dir("./velvet_tmp").expect("Failed to create temporary Velvet directory.");
+            println!("write_dir -> velvet_tmp");
         }
 
-        generator.emit_object_file("./velvet_tmp/ir.o");
-        let finish_objectgen = finished_irgen_t.elapsed();
-        let finished_objectgen_t = Instant::now();
-        let output = Command::new("clang").args(["./velvet_tmp/ir.o", "-o", "out"]).output().expect("Failed to link your Velvet program! You may have to manually link the object file under ./velvet_tmp/ir.o.");
-        let finish_linking = finished_objectgen_t.elapsed();
+        // let mut rng = rand::rng();
+        let name = format!("velvet_raw_{}", "IR"); //rng.random_range(481..194801));
+        let unoptimized_path = format!("./velvet_tmp/{}-unop.ll", name);
+
+        generator
+            .module
+            .print_to_file(format!("./velvet_tmp/{}-unop.ll", name))
+            .expect("Failed to generate LLVM IR file.");
+
+        let finish_codegen = finished_irgen_t.elapsed();
+        let finished_codegen_t = Instant::now();
+
+        println!("write -> velvet_tmp/{}-unop.ll", name);
+
+        let output = Command::new("opt")
+            .args([
+                "-O3",
+                unoptimized_path.as_str(),
+                "-S",
+                "-o",
+                format!("./velvet_tmp/{}-op.ll", name).as_str(),
+            ])
+            .output()
+            .expect("Failed to run `opt`. Do you have LLVM installed?");
+        let finish_optimizer = finished_codegen_t.elapsed();
+        let finished_optimizer_t = Instant::now();
+        println!("write -> velvet_tmp/{}-op.ll", name);
+
+        if !output.status.success() {
+            eprintln!(
+                "`opt` [LLVM IR optimizer] error: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            std::process::exit(1);
+        }
+
+        // generator.module.print_to_stderr();
+
+        // generator.emit_object_file("./velvet_tmp/ir.o");
+        let output = Command::new("clang").args([format!("./velvet_tmp/{}-op.ll", name).as_str(), "-o", "out"]).output().expect("Failed to link your Velvet program! You may have to manually link the object file under `./velvet_tmp`.");
+        let finish_linking = finished_optimizer_t.elapsed();
 
         if !output.status.success() {
             eprintln!("Linker error:\n{}", String::from_utf8_lossy(&output.stderr));
             std::process::exit(1);
         }
 
-        fs::remove_dir_all("./velvet_tmp").expect("Failed to remove temporary Velvet directory. You may have to manually remove it at `./velvet_tmp`.");
+        // fs::remove_dir_all("./velvet_tmp").expect("Failed to remove temporary Velvet directory. You may have to manually remove it at `./velvet_tmp`.");
 
         let final_time = start.elapsed();
         println!(
-            "Compilation finished\n | -> IR Generation  : {:?}\n | -> .o emission    : {:?}\n | -> Linking        : {:?}\n | -> Finished in    : {:?}",
-            finish_irgen, finish_objectgen, finish_linking, final_time
+            "\nCompilation finished\n| -> Intermedaite Generation  : {:?}\n| -> Code Generation          : {:?}\n| -> Optimization             : {:?}\n| -> Linking                  : {:?}\n| -> Finished in              : {:?}\n",
+            finish_irgen, finish_codegen, finish_optimizer, finish_linking, final_time
         );
         println!("Executable generated to `./out`");
 
