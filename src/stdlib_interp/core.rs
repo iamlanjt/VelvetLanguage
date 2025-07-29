@@ -3,9 +3,10 @@ use std::rc::Rc;
 
 use crate::args;
 use crate::runtime::source_environment::source_environment::SourceEnv;
-use crate::runtime::values::{BoolVal, NullVal, RuntimeVal, StringVal};
-use crate::stdlib::helpers::internal_fn;
+use crate::runtime::values::{NullVal, RuntimeVal, StringVal};
+use crate::stdlib_interp::helpers::internal_fn;
 
+// TODO: Generate FFI for compiler instead of interpreter
 pub fn print_fn() -> RuntimeVal {
     internal_fn("print", |args, env: Rc<RefCell<SourceEnv>>| {
         let output = args
@@ -16,30 +17,6 @@ pub fn print_fn() -> RuntimeVal {
 
         println!("{}", output);
         RuntimeVal::NullVal(NullVal {})
-    })
-}
-
-pub fn itypeof_fn() -> RuntimeVal {
-    internal_fn("itypeof", |args, _: Rc<RefCell<SourceEnv>>| {
-        args![args;];
-
-        let val = args.first().expect("itypeof requires 1 argument");
-
-        let type_name = match val {
-            RuntimeVal::StringVal(_) => "string",
-            RuntimeVal::BoolVal(_) => "bool",
-            RuntimeVal::NullVal(_) => "null",
-            RuntimeVal::ListVal(_) => "list",
-            RuntimeVal::ObjectVal(_) => "object",
-            RuntimeVal::FunctionVal(_) => "function",
-            RuntimeVal::InternalFunctionVal(_) => "internal_function",
-            RuntimeVal::NumberVal(_) => "number",
-            _ => "unknown",
-        };
-
-        RuntimeVal::StringVal(StringVal {
-            value: type_name.to_string(),
-        })
     })
 }
 

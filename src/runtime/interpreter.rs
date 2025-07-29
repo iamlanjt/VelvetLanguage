@@ -39,8 +39,6 @@ pub enum CallTarget {
 pub struct Interpreter {
     ast: Vec<Node>,
     call_stack: Vec<CallTarget>,
-    do_profile: bool,
-    profile_stats: HashMap<String, ProfilerItem>,
 }
 
 pub struct ProfilerItem {
@@ -48,12 +46,10 @@ pub struct ProfilerItem {
 }
 
 impl Interpreter {
-    pub fn new(ast: Vec<Node>, do_profile: bool) -> Self {
+    pub fn new(ast: Vec<Node>) -> Self {
         Self {
             ast,
             call_stack: Vec::new(),
-            do_profile,
-            profile_stats: HashMap::new(),
         }
     }
 
@@ -99,7 +95,7 @@ impl Interpreter {
                     "  ".to_owned()
                         + &u.function.fn_name.clone()
                         + "("
-                        + &u.function.params.join(", ")
+                        + &format!("{:?}", u.function.params)
                         + ")"
                 }
             };
@@ -398,7 +394,6 @@ impl Interpreter {
                     sub_environment.borrow_mut().declare_var(
                         it.left.literal_value.clone(),
                         v.clone(),
-                        "u".to_owned(),
                         false,
                     );
                     for sub_expr in &it.body {
@@ -430,7 +425,7 @@ impl Interpreter {
         let callstack_push = match &*caller {
             RuntimeVal::FunctionVal(f) => CallTarget::UserDefined(UserDefinedFn {
                 function: f.clone(),
-                display: format!("{}({})", f.fn_name.clone(), f.params.join(", ")),
+                display: format!("{}({:?})", f.fn_name.clone(), f.params),
             }),
             RuntimeVal::InternalFunctionVal(f) => {
                 CallTarget::Internal(format!("velvet::internal_functions::{}(...)", f.fn_name))
@@ -468,13 +463,12 @@ impl Interpreter {
                     let evaluated = self.evaluate(Box::new(arg.clone()), Rc::clone(&env));
                     post_evaluate_args.push(format!(
                         "{} = {:#?}",
-                        r#fn.params.get(i).unwrap(),
+                        r#fn.params.get(i).unwrap().0,
                         evaluated
                     ));
                     sub_environment.borrow_mut().declare_var(
-                        r#fn.params[i].clone(),
+                        r#fn.params[i].0.clone(),
                         *evaluated,
-                        "inferred_any".to_string(),
                         false,
                     );
                     i = i + 1;
@@ -568,12 +562,8 @@ impl Interpreter {
         });
 
         // Add to env
-        env.borrow_mut().declare_var(
-            def.name.clone(),
-            this_function_val,
-            String::from("function"),
-            false,
-        );
+        env.borrow_mut()
+            .declare_var(def.name.clone(), this_function_val, false);
 
         // Definitions do not return anything; it is automatically added by name to the env
         Box::new(RuntimeVal::NullVal(NullVal {}))
@@ -755,7 +745,6 @@ impl Interpreter {
         env.borrow_mut().declare_var(
             declaration.var_identifier.clone(),
             *rhs,
-            declaration.var_type.clone(),
             declaration.is_mutable,
         );
 

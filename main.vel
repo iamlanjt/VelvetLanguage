@@ -1,6 +1,9 @@
-bindm a as number = 24
-bindm b as number = 82
-a = 19151
-b = 1591511
-print(a - b)
-0
+;; Display of new AOT compiler
+;; This program will give a typechecking error
+
+;; See if you can follow the typechecker help hint to fix the error
+
+bind this_is_an_i32 as number = 25  ;; `number` == i32, or default compiler LLVM type
+bind this_is_an_i64 as i64 = 42
+
+print(this_is_an_i32 + this_is_an_i64)

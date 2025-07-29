@@ -3,15 +3,19 @@ use std::rc::Rc;
 #[cfg(test)]
 use crate::runtime::values::RuntimeVal;
 use crate::{
-    parser::parser::Parser,
+    parser::parser::{ExecutionTechnique, Parser},
     runtime::{interpreter::Interpreter, source_environment::source_environment::SourceEnv},
 };
 
 #[cfg(test)]
-
 fn quick_setup(source: &str) -> Box<RuntimeVal> {
-    return Interpreter::new(Parser::new(source, false).produce_ast(), false)
-        .evaluate_body(SourceEnv::create_global(false));
+    use crate::{
+        parser::parser::{ExecutionTechnique, Parser},
+        runtime::{interpreter::Interpreter, source_environment::source_environment::SourceEnv},
+    };
+
+    Interpreter::new(Parser::new(source, false, ExecutionTechnique::Interpretation).produce_ast())
+        .evaluate_body(SourceEnv::create_global(false))
 }
 
 /**
@@ -22,8 +26,12 @@ fn test_var_decl_immutable() {
     let env = SourceEnv::create_global(false);
 
     Interpreter::new(
-        Parser::new("bind test_var as number = 10", false).produce_ast(),
-        false,
+        Parser::new(
+            "bind test_var as number = 10",
+            false,
+            ExecutionTechnique::Interpretation,
+        )
+        .produce_ast(),
     )
     .evaluate_body(Rc::clone(&env));
 
@@ -35,7 +43,6 @@ fn test_var_decl_immutable() {
         false,
         "EnvVar Mutability Fault"
     );
-    assert_eq!(env_var.clone().unwrap().var_type, String::from("number"));
 
     match env_var.unwrap().value {
         RuntimeVal::NumberVal(nv) => {
@@ -50,8 +57,12 @@ fn test_var_decl_mutable() {
     let env = SourceEnv::create_global(false);
 
     Interpreter::new(
-        Parser::new("bindm test_var as number = 10", true).produce_ast(),
-        false,
+        Parser::new(
+            "bindm test_var as number = 10",
+            true,
+            ExecutionTechnique::Interpretation,
+        )
+        .produce_ast(),
     )
     .evaluate_body(Rc::clone(&env));
 
@@ -63,7 +74,6 @@ fn test_var_decl_mutable() {
         true,
         "EnvVar Mutability Fault"
     );
-    assert_eq!(env_var.clone().unwrap().var_type, String::from("number"));
 
     match env_var.unwrap().value {
         RuntimeVal::NumberVal(nv) => {
@@ -78,8 +88,12 @@ fn test_var_mutation() {
     let env = SourceEnv::create_global(false);
 
     Interpreter::new(
-        Parser::new("bindm test_var as number = 10\ntest_var = 5", false).produce_ast(),
-        false,
+        Parser::new(
+            "bindm test_var as number = 10\ntest_var = 5",
+            false,
+            ExecutionTechnique::Interpretation,
+        )
+        .produce_ast(),
     )
     .evaluate_body(Rc::clone(&env));
 
@@ -91,7 +105,6 @@ fn test_var_mutation() {
         true,
         "EnvVar Mutability Fault"
     );
-    assert_eq!(env_var.clone().unwrap().var_type, String::from("number"));
 
     match env_var.unwrap().value {
         RuntimeVal::NumberVal(nv) => {
@@ -107,8 +120,12 @@ fn test_var_mutation_on_immutable_env_var() {
     let env = SourceEnv::create_global(false);
 
     Interpreter::new(
-        Parser::new("bind test_var as number = 10\ntest_var = 5", false).produce_ast(),
-        false,
+        Parser::new(
+            "bind test_var as number = 10\ntest_var = 5",
+            false,
+            ExecutionTechnique::Interpretation,
+        )
+        .produce_ast(),
     )
     .evaluate_body(Rc::clone(&env));
 }

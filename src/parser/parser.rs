@@ -5,7 +5,7 @@ use crate::{
         AssignmentExpr, AstSnippet, BinaryExpr, Block, BoolLiteral, CallExpr, Comparator,
         FunctionDefinition, Identifier, IfStmt, InterpreterBlock, Iterator, ListLiteral, MatchExpr,
         MemberExpr, NoOpNode, Node, NullLiteral, NullishCoalescing, NumericLiteral, ObjectLiteral,
-        OptionalArg, Return, SnippetParam, StringLiteral, VarDeclaration, WhileStmt,
+        OptionalArg, Return, SnippetParam, StringLiteral, TypeCast, VarDeclaration, WhileStmt,
     },
     tokenizer::{
         token::{VelvetToken, VelvetTokenType},
@@ -18,16 +18,24 @@ pub struct Parser {
     token_pointer: usize,
     tkn_chain: Vec<VelvetToken>,
     ast_snippets: Vec<AstSnippet>,
+    etech: ExecutionTechnique,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum ExecutionTechnique {
+    Interpretation,
+    Compilation,
 }
 
 impl Parser {
-    pub fn new(input: &str, inject_stdlib_snippets: bool) -> Self {
-        let tokenized_result = tokenize(input, inject_stdlib_snippets);
+    pub fn new(input: &str, inject_stdlib_snippets: bool, etech: ExecutionTechnique) -> Self {
+        let tokenized_result = tokenize(input, inject_stdlib_snippets, etech.clone());
         Self {
             tokens: join_tokenizer_output(tokenized_result),
             token_pointer: 0,
             tkn_chain: Vec::new(),
             ast_snippets: Vec::new(),
+            etech,
         }
     }
 
@@ -90,8 +98,24 @@ impl Parser {
             VelvetTokenType::Arrow => self.parse_fn_declaration(),
             VelvetTokenType::Semicolon => self.parse_return_statement(),
             VelvetTokenType::DollarSign => self.parse_interpreter_block(),
+            VelvetTokenType::NoOp => {
+                self.eat();
+                Box::new(Node::NoOpNode(NoOpNode {}))
+            }
             _ => self.parse_expr(),
         }
+    }
+
+    pub fn parse_type_cast(&mut self, left: Box<Node>, right: String) -> Box<Node> {
+        if self.etech == ExecutionTechnique::Interpretation {
+            let current_token = self.current().clone();
+            self.error(&current_token, "You can only typecast in compilation mode.");
+        }
+
+        Box::new(Node::TypeCast(TypeCast {
+            left,
+            target_type: right,
+        }))
     }
 
     pub fn parse_interpreter_block(&mut self) -> Box<Node> {
@@ -181,12 +205,12 @@ impl Parser {
             .expect_token(VelvetTokenType::Identifier, "Function name expected")
             .literal_value
             .clone();
-        let args = self.parse_args();
-        let mut parameter_names: Vec<String> = Vec::new();
+        let args = self.parse_fdef_args(); // self.parse_args();
+        let mut parameter_names: Vec<(String, String)> = Vec::new();
         for arg in args {
-            match arg {
+            match arg.0 {
                 Node::Identifier(ref name) => {
-                    parameter_names.push(name.identifier_name.to_string());
+                    parameter_names.push((name.identifier_name.to_string(), arg.1));
                 }
                 _ => {
                     panic!("Expected identifier for function parameter");
@@ -217,6 +241,46 @@ impl Parser {
             body: rc_body,
             return_type,
         }));
+    }
+
+    // Same thing as `parse_args`, but requires explicit type declaration using `as` keyword
+    pub fn parse_fdef_args(&mut self) -> Vec<(Node, String)> {
+        self.expect_token(VelvetTokenType::LParen, "Expected function params");
+        let args: Vec<(Node, String)> = if self.current().kind == VelvetTokenType::RParen {
+            Vec::new()
+        } else {
+            self.parse_fdef_argument_list()
+        };
+
+        self.expect_token(VelvetTokenType::RParen, "Expected function params end");
+
+        args
+    }
+
+    pub fn parse_fdef_argument_list(&mut self) -> Vec<(Node, String)> {
+        let mut args: Vec<(Node, String)> = Vec::new();
+        let first_arg = *self.parse_assignment_expr();
+        self.expect_token(
+            VelvetTokenType::Keywrd_As,
+            "Function parameters must be explicitly typed",
+        );
+        let arg_type = self.expect_token(VelvetTokenType::Identifier, "Expected type identifier");
+        args.push((first_arg, arg_type.literal_value));
+
+        while !self.at_end() && self.current().kind == VelvetTokenType::Comma {
+            self.eat();
+            let next_arg = *self.parse_assignment_expr();
+            self.expect_token(
+                VelvetTokenType::Keywrd_As,
+                "Function parameters must be explicitly typed",
+            );
+
+            let arg_type =
+                self.expect_token(VelvetTokenType::Identifier, "Expected type identifier");
+            args.push((next_arg, arg_type.literal_value));
+        }
+
+        args
     }
 
     pub fn parse_args(&mut self) -> Vec<Node> {
@@ -422,23 +486,33 @@ impl Parser {
             }
             let next_kind = self.current().kind.clone();
 
-            if next_kind != VelvetTokenType::Asterisk && next_kind != VelvetTokenType::Slash {
-                break;
+            if next_kind == VelvetTokenType::At {
+                self.eat();
+                let t = self
+                    .expect_token(VelvetTokenType::Identifier, "Expected type after typecast")
+                    .literal_value
+                    .clone();
+
+                left = self.parse_type_cast(left, t);
+            } else {
+                if next_kind != VelvetTokenType::Asterisk && next_kind != VelvetTokenType::Slash {
+                    break;
+                }
+
+                let operator = self.eat().literal_value.clone();
+
+                // MARKER: Bugx001 fix, `self.parse_primary_expr()` -> `self.parse_additive_expr()`
+                // Putting a marker here because this is such a volatile change that future possible bugs relating to this change may be hard to deduce.
+
+                // Jul 7 change, `self.parse_additive_expr()` -> `self.parse_call_member_expr()` due to precedence issues. This seems to have fixed them and not caused
+                // any other bugs.
+                let right = self.parse_call_member_expr();
+                left = Box::new(Node::BinaryExpr(BinaryExpr {
+                    left,
+                    right,
+                    op: operator.to_string(),
+                }))
             }
-
-            let operator = self.eat().literal_value.clone();
-
-            // MARKER: Bugx001 fix, `self.parse_primary_expr()` -> `self.parse_additive_expr()`
-            // Putting a marker here because this is such a volatile change that future possible bugs relating to this change may be hard to deduce.
-
-            // Jul 7 change, `self.parse_additive_expr()` -> `self.parse_call_member_expr()` due to precedence issues. This seems to have fixed them and not caused
-            // any other bugs.
-            let right = self.parse_call_member_expr();
-            left = Box::new(Node::BinaryExpr(BinaryExpr {
-                left,
-                right,
-                op: operator.to_string(),
-            }))
         }
 
         left

@@ -1,0 +1,4 @@
+|-> error(message) {
+    print("Error!")
+    print(message)
+}

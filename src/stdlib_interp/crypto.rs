@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::args;
 use crate::runtime::source_environment::source_environment::SourceEnv;
 use crate::runtime::values::*;
-use crate::stdlib::helpers::{internal_fn, object_val};
+use crate::stdlib_interp::helpers::{internal_fn, object_val};
 
 pub fn crypto_module() -> RuntimeVal {
     object_val([(

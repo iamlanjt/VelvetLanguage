@@ -1,9 +1,12 @@
 #[cfg(test)]
 use std::{collections::HashMap, vec};
 
-use crate::tokenizer::{
-    token::{VelvetToken, VelvetTokenType},
-    tokenizer::tokenize,
+use crate::{
+    parser::parser::ExecutionTechnique,
+    tokenizer::{
+        token::{VelvetToken, VelvetTokenType},
+        tokenizer::tokenize,
+    },
 };
 
 #[test]
@@ -30,7 +33,11 @@ fn tokenizer_unit_single_char() {
     ]);
 
     for unit in &test_characters {
-        let results = tokenize(&unit.0.to_string(), false);
+        let results = tokenize(
+            &unit.0.to_string(),
+            false,
+            ExecutionTechnique::Interpretation,
+        );
 
         assert_eq!(results.real_tokens.len(), 1);
 
@@ -67,7 +74,7 @@ fn tokenizer_unit_multi_char() {
     ]);
 
     for unit in &test_phrases {
-        let result = tokenize(unit.0, false);
+        let result = tokenize(unit.0, false, ExecutionTechnique::Interpretation);
 
         assert_eq!(result.real_tokens.len(), 1);
         assert!(result.real_tokens.first().is_some());
@@ -94,7 +101,7 @@ fn tokenizer_unit_reserved_keywords() {
     ]);
 
     for tkn in &reserved_tokens {
-        let result = tokenize(tkn.0, false);
+        let result = tokenize(tkn.0, false, ExecutionTechnique::Interpretation);
 
         assert_eq!(result.real_tokens.len(), 1);
         assert!(result.real_tokens.first().is_some());
@@ -112,7 +119,7 @@ fn tokenizer_unit_combinations() {
     ]);
 
     for tkn in &combined_tokens {
-        let result = tokenize(tkn.0, false);
+        let result = tokenize(tkn.0, false, ExecutionTechnique::Interpretation);
 
         assert_eq!(result.real_tokens.len(), 1);
         assert!(result.real_tokens.first().is_some());
@@ -133,6 +140,6 @@ fn tokenizer_unit_unexpected_eofs() {
     ];
 
     for case in &test_cases {
-        tokenize(case, false);
+        tokenize(case, false, ExecutionTechnique::Interpretation);
     }
 }

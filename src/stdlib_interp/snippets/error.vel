@@ -1,5 +1,6 @@
 |-> error(message, exitCode?) {
-    print("Error!", message)
+    print("Error!")
+    print(message)
     print(__CALL_STACK)
     process.exit(exitCode ! 5)
 }

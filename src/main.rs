@@ -1,26 +1,23 @@
 use colored::Colorize;
-use rand::Rng;
 
+use crate::parser::parser::ExecutionTechnique;
 use crate::runtime::source_environment::source_environment::SourceEnv;
 use crate::{
-    intermediate::intermediate::{deserialize_node, serialize_node},
     parser::{nodetypes::Node, parser::Parser},
     runtime::interpreter::Interpreter,
     tokenizer::tokenizer::tokenize,
 };
 use std::env;
-use std::fs::{self, File};
-use std::io::ErrorKind;
+use std::fs::{self};
 use std::process::Command;
 use std::time::Instant;
 
 mod codegen;
-mod intermediate;
 mod parser;
 mod runtime;
 mod tokenizer;
 #[macro_use]
-mod stdlib;
+mod stdlib_interp;
 mod tests;
 
 fn print_node(node: &Node, depth: usize) {
@@ -105,7 +102,6 @@ fn main() {
     }
 
     let file_path = args[1].clone();
-    let mut reader_file = std::fs::File::open(args[1].clone()).unwrap();
 
     let inject_stdlib_snippets = !args
         .iter()
@@ -113,54 +109,33 @@ fn main() {
 
     let is_sandboxed = args.iter().any(|p| *p.to_lowercase() == *"sandbox");
 
-    let compile_intermediate = args
-        .iter()
-        .any(|p| *p.to_lowercase() == *"compile_intermediate");
-
     let compile_ir = args.iter().any(|p| *p.to_lowercase() == *"compile");
 
     let do_profile = args.iter().any(|p| *p.to_lowercase() == *"profile");
 
-    // If using intermediate, exit early to not error on non-utf-8 file stream writing to `contents`
-    if file_path.ends_with(".imvel") {
-        let mut vec_boxes: Vec<Node> = Vec::new();
-        loop {
-            match deserialize_node(&mut reader_file) {
-                Ok(node) => {
-                    vec_boxes.push(node);
-                }
-                Err(e) if e.kind() == ErrorKind::UnexpectedEof => break, // ← normal end-of-file
-                Err(e) => panic!("Failed to deserialize intermediate Velvet file: {e:#?}"),
-            }
-        }
-
-        let mut interp = Interpreter::new(vec_boxes, false);
-        interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
-
-        return;
-    };
+    let do_coerce = args.iter().any(|p| *p.to_lowercase() == *"cmp-do-coerce");
 
     let contents = fs::read_to_string(&file_path)
         .unwrap_or_else(|err| panic!("Unable to execute Velvet file: {:#?}", err));
 
-    let mut parser = Parser::new(&contents, inject_stdlib_snippets);
+    let mut parser = Parser::new(
+        &contents,
+        inject_stdlib_snippets,
+        if compile_ir {
+            ExecutionTechnique::Compilation
+        } else {
+            ExecutionTechnique::Interpretation
+        },
+    );
     let ast = parser.produce_ast();
-
-    if compile_intermediate {
-        let mut file = File::create("./out.imvel").unwrap();
-        for node in &ast {
-            serialize_node(&mut file, node);
-        }
-        println!("Wrote Intermediate Velvet File to ./out.imvel.");
-        std::process::exit(0);
-    }
+    // println!("{:#?}", ast);
 
     if compile_ir {
         println!("{}\n  {}", "Notice!".on_red(), "The `compile` flag is present, so Velvet will attempt to compile your input rather than interpret it.\n  The compiler is still in beta, and behavior may not be uniform between interpretation and compilation methods.".yellow());
         use crate::codegen::codegen::IRGenerator;
         let file_name = args.get(1).unwrap();
         let context = inkwell::context::Context::create();
-        let mut generator = IRGenerator::new(&context, file_name);
+        let mut generator = IRGenerator::new(&context, file_name, do_coerce);
         let start = Instant::now();
         println!("Compiling `{}`...", file_name);
 
@@ -233,7 +208,11 @@ fn main() {
     }
 
     if args.iter().any(|p| *p.to_lowercase() == *"do_dump_tokens") {
-        let tokenizer_results = tokenize(&contents, inject_stdlib_snippets);
+        let tokenizer_results = tokenize(
+            &contents,
+            inject_stdlib_snippets,
+            ExecutionTechnique::Interpretation,
+        );
         println!("[Stdlib Snippet Token Dump]");
         println!(
             "\t-> <ommitted {} snippet group(s): not useful for debugging; snippets available via source at https://www.github.com/iamlanjt/velvetlanguage src/stdlib/snippets>",
@@ -320,7 +299,7 @@ fn main() {
         }
     }
 
-    let mut interp = Interpreter::new(ast, do_profile);
+    let mut interp = Interpreter::new(ast);
     interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
 }
 

@@ -80,7 +80,7 @@ pub struct BoolVal {
 
 #[derive(Debug, Clone)]
 pub struct FunctionVal {
-    pub params: Vec<String>,
+    pub params: Vec<(String, String)>,
     pub fn_name: String,
     pub execution_body: Rc<Vec<Node>>,
     pub is_internal: bool,
@@ -175,12 +175,9 @@ impl RuntimeVal {
             RuntimeVal::StringVal(s) => write!(f, "\"{}\"", s.value),
             RuntimeVal::BoolVal(b) => write!(f, "{}", b.value),
             RuntimeVal::NullVal(_) => write!(f, "null"),
-            RuntimeVal::FunctionVal(func) => write!(
-                f,
-                "<function {} ({})>",
-                func.fn_name,
-                func.params.join(", ")
-            ),
+            RuntimeVal::FunctionVal(func) => {
+                write!(f, "<function {} ({:?})>", func.fn_name, func.params)
+            }
             RuntimeVal::InternalFunctionVal(func) => {
                 write!(f, "<function::internal {}>", func.fn_name)
             }

@@ -55,10 +55,12 @@ pub enum VelvetTokenType {
     WallArrow,
     Keywrd_Match,
     QuestionMark,
-    DollarSign
+    DollarSign,
+    At,
+    NoOp,
 }
 
-const VTOK_EQUIV: [&str; 39] = [
+const VTOK_EQUIV: [&str; 41] = [
     "Plus",
     "Minus",
     "Asterisk",
@@ -97,7 +99,9 @@ const VTOK_EQUIV: [&str; 39] = [
     "WallArrow",
     "Keywrd:Match",
     "QuestionMark",
-    "DollarSign"
+    "DollarSign",
+    "At",
+    "NoOp",
 ];
 
 impl fmt::Display for VelvetTokenType {
@@ -112,7 +116,7 @@ pub struct VelvetToken {
     pub real_size: usize,
     pub line: usize,
     pub column: usize,
-    pub literal_value: String
+    pub literal_value: String,
 }
 
 impl TryFrom<u8> for VelvetTokenType {
@@ -162,12 +166,5 @@ impl TryFrom<u8> for VelvetTokenType {
             38 => Ok(DollarSign),
             _ => Err(TryFromPrimitiveError { value }),
         }
-    }
-}
-
-
-impl VelvetTokenType {
-    pub fn to_u8(self) -> u8 {
-        self as u8
     }
 }

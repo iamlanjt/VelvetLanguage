@@ -1,10 +1,11 @@
+use crate::parser::parser::ExecutionTechnique;
 #[cfg(test)]
 use crate::parser::{nodetypes::Node, parser::Parser};
 
 // Unit tests: test all nodes
 #[test]
 fn parser_unit_node_binary_expr() {
-    let mut parser = Parser::new("15 * 11 / 1 + 2", false);
+    let mut parser = Parser::new("15 * 11 / 1 + 2", false, ExecutionTechnique::Interpretation);
     let ast = parser.produce_ast();
 
     assert_eq!(
@@ -68,7 +69,12 @@ fn parser_unit_node_binary_expr() {
 
 #[test]
 fn parser_unit_node_while_stmt_comparator() {
-    let ast = Parser::new("while CONDITION_LEFT == CONDITION_RIGHT do {}", false).produce_ast();
+    let ast = Parser::new(
+        "while CONDITION_LEFT == CONDITION_RIGHT do {}",
+        false,
+        ExecutionTechnique::Interpretation,
+    )
+    .produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &*ast.first().unwrap() {
@@ -105,7 +111,12 @@ fn parser_unit_node_while_stmt_comparator() {
 
 #[test]
 fn parser_unit_node_while_stmt_truthy() {
-    let ast = Parser::new("while CONDITION_LEFT do {}", false).produce_ast();
+    let ast = Parser::new(
+        "while CONDITION_LEFT do {}",
+        false,
+        ExecutionTechnique::Interpretation,
+    )
+    .produce_ast();
 
     assert_eq!(
         ast.len(),
@@ -128,7 +139,12 @@ fn parser_unit_node_while_stmt_truthy() {
 
 #[test]
 fn parser_unit_node_while_stmt_body() {
-    let ast = Parser::new("while CONDITION_LEFT do { print(CONDITION_LEFT) }", false).produce_ast();
+    let ast = Parser::new(
+        "while CONDITION_LEFT do { print(CONDITION_LEFT) }",
+        false,
+        ExecutionTechnique::Interpretation,
+    )
+    .produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &*ast.first().unwrap() {
@@ -145,7 +161,7 @@ fn parser_unit_node_while_stmt_body() {
 
 #[test]
 fn parser_unit_node_string_literal() {
-    let ast = Parser::new("'Hello World'", false).produce_ast();
+    let ast = Parser::new("'Hello World'", false, ExecutionTechnique::Interpretation).produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &*ast.first().unwrap() {
@@ -161,7 +177,12 @@ fn parser_unit_node_string_literal() {
 
 #[test]
 fn parser_unit_node_object_lieral() {
-    let ast = Parser::new("{ a: { sub_object: true }, b: 2 * 3 }", false).produce_ast();
+    let ast = Parser::new(
+        "{ a: { sub_object: true }, b: 2 * 3 }",
+        false,
+        ExecutionTechnique::Interpretation,
+    )
+    .produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &*ast.first().unwrap() {
@@ -192,7 +213,12 @@ fn parser_unit_node_object_lieral() {
 
 #[test]
 fn parser_unit_node_list_literal() {
-    let ast = Parser::new("[1, 2, ['sub', 5]]", false).produce_ast();
+    let ast = Parser::new(
+        "[1, 2, ['sub', 5]]",
+        false,
+        ExecutionTechnique::Interpretation,
+    )
+    .produce_ast();
 
     assert_eq!(ast.len(), 1);
     match &*ast.first().unwrap() {
@@ -230,7 +256,7 @@ fn parser_integration_member_cases() {
         "parent[computed_property[sub_computed_property]]",
     ];
     for c in cases {
-        let mut parser = Parser::new(c, false);
+        let mut parser = Parser::new(c, false, ExecutionTechnique::Interpretation);
         parser.produce_ast();
     }
 }
