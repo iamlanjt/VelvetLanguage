@@ -1,15 +1,24 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, process};
 
+use colored::Colorize;
 use inkwell::{
-    AddressSpace, IntPredicate,
+    AddressSpace, Either, IntPredicate,
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, IntType},
-    values::{BasicValue, BasicValueEnum, GlobalValue, IntValue, PointerValue},
+    values::{
+        BasicValue, BasicValueEnum, GlobalValue, InstructionOpcode, InstructionValue, IntValue,
+        PointerValue,
+    },
 };
 
 use crate::parser::nodetypes::Node;
+
+// TODO ideally move these constants to compiler flags;
+//      at the time of writing, both commnts and the compiler are undergoing very complex canges,
+//      so this will work for development, but should be altered once out of a beta state.
+const CF_DEBUG_MODE: bool = false;
 
 #[derive(Clone)]
 struct IRVar<'ctx> {
@@ -28,6 +37,15 @@ impl<'ctx> IRVar<'ctx> {
     }
 }
 
+#[derive(Debug)]
+struct VarUsage {
+    is_mut: bool,
+    was_read: bool,
+    was_written: bool,
+}
+
+type ScopeUsage = HashMap<String, VarUsage>;
+
 pub struct IRGenerator<'ctx> {
     pub context: &'ctx Context,
     pub builder: Builder<'ctx>,
@@ -40,6 +58,36 @@ pub struct IRGenerator<'ctx> {
     // call stack stuff
     call_stack: Option<GlobalValue<'ctx>>,
     call_stack_ptr: Option<GlobalValue<'ctx>>,
+
+    // error and warning compile-time stacks
+    error_stack: Vec<String>,
+    warning_stack: Vec<String>,
+
+    // analysis stuff
+    scope_stack: Vec<ScopeUsage>,
+}
+
+fn ret_has_value<'ctx>(ret_inst: InstructionValue<'ctx>) -> Option<BasicValueEnum<'ctx>> {
+    if ret_inst.get_num_operands() == 0 {
+        return None; // void return
+    }
+
+    ret_inst.get_operand(0).and_then(|either| match either {
+        Either::Left(value) => Some(value),
+        Either::Right(_) => None,
+    })
+}
+
+fn is_undef(value: BasicValueEnum) -> bool {
+    match value {
+        BasicValueEnum::IntValue(int_val) => int_val.is_undef(),
+        BasicValueEnum::FloatValue(float_val) => float_val.is_undef(),
+        BasicValueEnum::PointerValue(ptr_val) => ptr_val.is_undef(),
+        BasicValueEnum::VectorValue(vec_val) => vec_val.is_undef(),
+        BasicValueEnum::ArrayValue(arr_val) => arr_val.is_undef(),
+        BasicValueEnum::StructValue(struct_val) => struct_val.is_undef(),
+        _ => false,
+    }
 }
 
 impl<'ctx> IRGenerator<'ctx> {
@@ -57,15 +105,100 @@ impl<'ctx> IRGenerator<'ctx> {
             coerce_types,
             call_stack: None,
             call_stack_ptr: None,
+            error_stack: Vec::new(),
+            warning_stack: Vec::new(),
+            scope_stack: Vec::new(),
         }
     }
 
+    fn unwind_warning_stack(&mut self) {
+        if !self.warning_stack.is_empty() {
+            eprintln!(
+                "Program generated {} warning(s);",
+                self.warning_stack.len().to_string().yellow().bold()
+            );
+            for warning in &self.warning_stack {
+                eprintln!(
+                    "{}: {}",
+                    String::from("warning").yellow().bold(),
+                    warning.bold()
+                );
+            }
+            println!("\n");
+        }
+    }
+
+    fn unwind_error_stack(&mut self) {
+        if !self.error_stack.is_empty() {
+            eprintln!(
+                "Program generated {} error(s);",
+                self.error_stack.len().to_string().on_red().white().bold()
+            );
+            for err in &self.error_stack {
+                eprintln!(
+                    "{}: {}",
+                    String::from("error").on_red().white().bold(),
+                    err.bold()
+                );
+            }
+            println!("\n");
+        }
+    }
+
+    // Throw an exception onto the codegen's error stack
+    // If `exit_immediately` is truthy, both the error and warning stacks will unwind and generation will halt with this error.
+    fn compiler_error(&mut self, message: &str, exit_immediately: bool) {
+        self.error_stack.push(message.to_string());
+        if exit_immediately {
+            self.unwind_warning_stack();
+            self.unwind_error_stack();
+            process::exit(1);
+        }
+    }
+
+    fn compiler_warning(&mut self, message: &str) {
+        self.warning_stack.push(message.to_string());
+    }
+
     fn enter_scope(&mut self) {
-        self.variables.push(HashMap::new())
+        self.variables.push(HashMap::new());
+        self.scope_stack.push(HashMap::new());
     }
 
     fn exit_scope(&mut self) {
         self.variables.pop();
+
+        // Unwind the scope stack for mutated / read / written bindings
+        let scope_stack = self.scope_stack.pop().unwrap();
+        for (name, usage) in scope_stack {
+            if !usage.was_read {
+                self.compiler_warning(&format!("`{}` is declared but never read\n-> help: remove this binding if it won't be used", name));
+            }
+            if usage.is_mut && !usage.was_written {
+                self.compiler_warning(&format!(
+                    "`{}` is declared with `bindm` but is never mutated.\n-> help: consider using `bind` instead of `bindm`",
+                    name
+                ));
+            }
+        }
+    }
+
+    fn mark_read(&mut self, name: &str) {
+        for scope in self.scope_stack.iter_mut().rev() {
+            if let Some(usage) = scope.get_mut(name) {
+                usage.was_read = true;
+                return;
+            }
+        }
+    }
+
+    fn mark_written(&mut self, name: &str) {
+        for scope in self.scope_stack.iter_mut().rev() {
+            if let Some(usage) = scope.get_mut(name) {
+                usage.was_written = true;
+                return;
+            }
+        }
     }
 
     fn declare_variable(
@@ -77,8 +210,17 @@ impl<'ctx> IRGenerator<'ctx> {
     ) {
         if let Some(scope) = self.variables.last_mut() {
             scope.insert(name.to_string(), IRVar::new(ptr, ty, mutable));
+            let scope_stack = self.scope_stack.last_mut().unwrap();
+            scope_stack.insert(
+                name.to_string(),
+                VarUsage {
+                    is_mut: mutable,
+                    was_read: false,
+                    was_written: false,
+                },
+            );
         } else {
-            panic!("No scope to declare var in");
+            self.compiler_error("Attempt to declare a variable where no scope exists", false);
         }
     }
 
@@ -121,6 +263,7 @@ impl<'ctx> IRGenerator<'ctx> {
             .builder
             .build_global_string_ptr(value, name)
             .expect("Failed to generate IR string");
+        //global_str.set_constant(true);
 
         global_str.as_pointer_value()
     }
@@ -169,7 +312,7 @@ impl<'ctx> IRGenerator<'ctx> {
     }
 
     pub fn coerce_ints_to_common_type(
-        &self,
+        &mut self,
         left: IntValue<'ctx>,
         right: IntValue<'ctx>,
     ) -> (IntValue<'ctx>, IntValue<'ctx>) {
@@ -183,12 +326,15 @@ impl<'ctx> IRGenerator<'ctx> {
             return (left, right);
         }
 
-        let precedence = |ty: IntType<'ctx>| match ty.get_bit_width() {
+        let mut precedence = |ty: IntType<'ctx>| match ty.get_bit_width() {
             8 => 0,
             16 => 1,
             32 => 2,
             64 => 3,
-            other => panic!("Unsupported int width: {other}"),
+            other => {
+                self.compiler_error(&format!("Unsupported int width: {other}"), false);
+                5
+            }
         };
 
         let common_ty = if precedence(l_ty) >= precedence(r_ty) {
@@ -221,25 +367,28 @@ impl<'ctx> IRGenerator<'ctx> {
     }
 
     pub fn enforce_type_equality(
-        &self,
+        &mut self,
         left: &BasicValueEnum<'ctx>,
         right: &BasicValueEnum<'ctx>,
         right_node: &Node,
         help: String,
     ) {
         if left.get_type() != right.get_type() {
-            panic!(
-                "\n[typecheck::equality] Expected > {} < to be `{}`, but it is of type `{}`\nhelp: {}\n",
-                right_node,
-                left.get_type().print_to_string().to_str().unwrap(),
-                right.get_type().print_to_string().to_str().unwrap(),
-                help
-            )
+            self.compiler_error(
+                &format!(
+                    "Expected > {} < to be `{}`, but it is of type `{}`\n-> help: {}\n",
+                    right_node,
+                    left.get_type().print_to_string().to_str().unwrap(),
+                    right.get_type().print_to_string().to_str().unwrap(),
+                    help
+                ),
+                false,
+            );
         }
     }
 
     // Helper function used for converting type identifiers to LLVM types
-    pub fn str_to_llvm_type(&self, str_type: &str) -> BasicTypeEnum<'ctx> {
+    pub fn str_to_llvm_type(&mut self, str_type: &str) -> BasicTypeEnum<'ctx> {
         match str_type {
             // GP number that equates to the default compiler-defined number, currently i32
             "number" => self.context.i32_type().into(),
@@ -248,43 +397,53 @@ impl<'ctx> IRGenerator<'ctx> {
             "i32" => self.context.i32_type().into(),
             "i64" => self.context.i64_type().into(),
             "string" => self.context.ptr_type(AddressSpace::default()).into(),
-            _ => panic!("Failed to match typestring `{}` to LLVM type.", str_type),
+            _ => {
+                self.compiler_error(
+                    &format!("Failed to map identifier `{}` to a valid type", str_type),
+                    false,
+                );
+                self.context.i32_type().into()
+            }
         }
     }
 
-    pub fn generate_ir_for_nodes(&mut self, nodes: Vec<Node>) {
+    // @START
+    // This is the entry function which is used to start and end compiler IR generation
+    pub fn generate_ir_for_nodes(&mut self, nodes: Vec<Node>) -> bool {
         // Generate globals
         self.format_str_int = Some(self.build_global_format_string("format_str_int", "%lld\n"));
         self.format_str_str = Some(self.build_global_format_string("format_str_str", "%s\n"));
 
-        // Call stack
-        // %CallFrame
-        let i32_type = self.context.i32_type();
-        let char_arr_type = self.context.i8_type().array_type(64);
-        let call_frame_type = self
-            .context
-            .struct_type(&[i32_type.into(), char_arr_type.into()], false);
+        if CF_DEBUG_MODE {
+            // Call stack
+            // %CallFrame
+            let i32_type = self.context.i32_type();
+            let char_arr_type = self.context.i8_type().array_type(64);
+            let call_frame_type = self
+                .context
+                .struct_type(&[i32_type.into(), char_arr_type.into()], false);
 
-        // @__CALL_STACK
-        let stack_array_type = call_frame_type.array_type(64);
-        let call_stack_global = self
-            .module
-            .add_global(stack_array_type, None, "__CALL_STACK");
-        call_stack_global.set_initializer(&stack_array_type.const_zero());
-        call_stack_global.set_linkage(Linkage::Internal);
+            // @__CALL_STACK
+            let stack_array_type = call_frame_type.array_type(64);
+            let call_stack_global = self
+                .module
+                .add_global(stack_array_type, None, "__CALL_STACK");
+            call_stack_global.set_initializer(&stack_array_type.const_zero());
+            call_stack_global.set_linkage(Linkage::Internal);
 
-        // @__CALL_STACK_PTR
-        let call_stack_ptr = self.module.add_global(i32_type, None, "__CALL_STACK_PTR");
-        call_stack_ptr.set_initializer(&i32_type.const_zero());
-        call_stack_global.set_linkage(Linkage::Internal);
+            // @__CALL_STACK_PTR
+            let call_stack_ptr = self.module.add_global(i32_type, None, "__CALL_STACK_PTR");
+            call_stack_ptr.set_initializer(&i32_type.const_zero());
+            call_stack_global.set_linkage(Linkage::Internal);
 
-        self.call_stack = Some(call_stack_global);
-        self.call_stack_ptr = Some(call_stack_ptr);
+            self.call_stack = Some(call_stack_global);
+            self.call_stack_ptr = Some(call_stack_ptr);
+        }
 
         // Main entry function, start proeducing LLVM IR
         // vvvvvvvvvvvvvvvvvvv
         self.enter_scope();
-        let i64_type = self.context.i64_type();
+        let i64_type = self.context.i32_type();
         let fn_type = i64_type.fn_type(&[], false);
         let function = self.module.add_function("main", fn_type, None);
         let entry_block = self.context.append_basic_block(function, "entry");
@@ -296,13 +455,22 @@ impl<'ctx> IRGenerator<'ctx> {
             last_val = self.generate_ir_for_expr(&node);
         }
 
+        self.exit_scope();
+
         if let Some(x) = last_val {
             self.builder.build_return(Some(&x)).unwrap();
         } else {
             // there is no return value, so return zero (success) to the main function
-            let zero = self.context.i64_type().const_int(0, false);
+            let zero = self.context.i32_type().const_int(0, false);
             self.builder.build_return(Some(&zero)).unwrap();
         }
+
+        self.unwind_warning_stack();
+        if !self.error_stack.is_empty() {
+            self.unwind_error_stack();
+            return false;
+        }
+        true
     }
 
     pub fn generate_ir_for_expr(&mut self, node: &Node) -> Option<BasicValueEnum<'ctx>> {
@@ -317,6 +485,39 @@ impl<'ctx> IRGenerator<'ctx> {
                 let parsed_val = n.literal_value.parse::<u64>().unwrap();
                 let base_type = self.context.i32_type();
                 Some(base_type.const_int(parsed_val, false).into())
+            }
+            Node::IfStmt(ifs) => {
+                let parent_func = self
+                    .builder
+                    .get_insert_block()
+                    .unwrap()
+                    .get_parent()
+                    .unwrap();
+
+                let cond_block = self.context.append_basic_block(parent_func, "ifcond");
+                let body_block = self.context.append_basic_block(parent_func, "ifbody");
+                let end_block = self.context.append_basic_block(parent_func, "ifend");
+
+                self.builder.build_unconditional_branch(cond_block).unwrap();
+
+                self.builder.position_at_end(cond_block);
+                let condition = self.generate_ir_for_expr(&ifs.condition).unwrap();
+
+                self.builder
+                    .build_conditional_branch(condition.into_int_value(), body_block, end_block)
+                    .unwrap();
+
+                self.builder.position_at_end(body_block);
+
+                for stmt in &ifs.body {
+                    self.generate_ir_for_expr(stmt);
+                }
+
+                self.builder.build_unconditional_branch(end_block).unwrap();
+
+                self.builder.position_at_end(end_block);
+
+                None
             }
             Node::TypeCast(cast) => {
                 let expr_val = self
@@ -348,10 +549,20 @@ impl<'ctx> IRGenerator<'ctx> {
 
                             Some(casted.into())
                         } else {
-                            panic!("Cannot cast int to non-int type: {:?}", target_type_str);
+                            self.compiler_error(
+                                &format!("Cannot cast int to non-int type {:?}", target_type_str),
+                                false,
+                            );
+                            Some(expr_val)
                         }
                     }
-                    _ => panic!("Type casting is only supported for int values right now"),
+                    _ => {
+                        self.compiler_error(
+                            "Typecasting is only supported for int values during compilation at the moment\n-> help: maybe use the interpreter instead?",
+                            true
+                        );
+                        panic!();
+                    }
                 }
             }
             Node::Return(r) => {
@@ -369,9 +580,10 @@ impl<'ctx> IRGenerator<'ctx> {
                     .map(|param| self.str_to_llvm_type(&param.1).into())
                     .collect();
 
-                self.enter_scope();
                 let fn_type = return_type.fn_type(&param_types, false);
-                let func = self.module.add_function(&fd.name, fn_type, None);
+                let func = self
+                    .module
+                    .add_function(&fd.name, fn_type, Some(Linkage::Internal));
                 let entry_block = self.context.append_basic_block(func, "entry");
 
                 self.builder.position_at_end(entry_block);
@@ -402,13 +614,29 @@ impl<'ctx> IRGenerator<'ctx> {
 
                 let mut last_val = None;
 
+                let mut valid_nodes = 0;
+                self.enter_scope();
                 for node in fd.body.as_ref() {
                     let result = self.generate_ir_for_expr(node);
+                    if result.is_some() {
+                        valid_nodes += 1;
+                    }
                     if let Node::Return(_) = node {
+                        valid_nodes += 1;
                         break;
                     }
                     last_val = result;
                 }
+
+                if valid_nodes == 0 {
+                    self.compiler_warning(
+                        &format!(
+                            "Function `{}` ( => `{}`) is considered unreachable due to a type return failure.\nThe compiler will throw an error if this function is called in the future.",
+                            &fd.name, return_type.print_to_string().to_str().unwrap()
+                        ));
+                    self.builder.build_unreachable().unwrap();
+                }
+                self.exit_scope();
 
                 let main_fn = self.module.get_function("main").unwrap();
                 let main_entry = main_fn.get_first_basic_block().unwrap();
@@ -484,18 +712,13 @@ impl<'ctx> IRGenerator<'ctx> {
                 Some(phi)
             }
             Node::Block(bl) => {
-                let mut last_val = Some(self.context.i64_type().const_int(0, false).into());
+                let mut last_val = None;
 
                 for node in &bl.body {
                     last_val = self.generate_ir_for_expr(node);
                 }
 
-                if let Some(x) = last_val {
-                    Some(x)
-                } else {
-                    let zero = self.context.i64_type().const_int(0, false);
-                    Some(zero.into())
-                }
+                last_val
             }
             Node::BinaryExpr(bin_op) => {
                 let left = self.generate_ir_for_expr(&bin_op.left);
@@ -529,12 +752,23 @@ impl<'ctx> IRGenerator<'ctx> {
                         };
                         Some(val.unwrap().into())
                     }
-                    _ => panic!(
-                        "Cannot perform operation `{}` on `{:?}` and `{:?}`",
-                        bin_op.op,
-                        left.unwrap().get_type().to_string(),
-                        right.unwrap().get_type().to_string()
-                    ),
+                    _ => {
+                        self.compiler_error(
+                            &format!(
+                                "Cannot perform operation `{}` on `{}` and `{}`",
+                                bin_op.op,
+                                left.unwrap().get_type().print_to_string().to_str().unwrap(),
+                                right
+                                    .unwrap()
+                                    .get_type()
+                                    .print_to_string()
+                                    .to_str()
+                                    .unwrap()
+                            ),
+                            false,
+                        );
+                        left
+                    }
                 }
             }
             Node::VarDeclaration(vdecl) => {
@@ -556,6 +790,7 @@ impl<'ctx> IRGenerator<'ctx> {
 
             Node::Identifier(ident) => {
                 if let Some(var) = self.get_variable(&ident.identifier_name) {
+                    self.mark_read(&ident.identifier_name);
                     let loaded = self
                         .builder
                         .build_load(var.ty, var.ptr, &ident.identifier_name)
@@ -566,6 +801,10 @@ impl<'ctx> IRGenerator<'ctx> {
                     // Yes I know it's weird
                     match ident.identifier_name.as_str() {
                         "__CALL_STACK" => {
+                            if !CF_DEBUG_MODE {
+                                // Call stack doesn't exist if this branch is reached
+                                return None;
+                            }
                             let buffer_size = 4096;
                             let buffer_type = self.context.i8_type().array_type(buffer_size);
                             let buffer_alloca = self
@@ -573,7 +812,7 @@ impl<'ctx> IRGenerator<'ctx> {
                                 .build_alloca(buffer_type, "callstack_buf")
                                 .unwrap();
 
-                            let buffer_ptr = unsafe {
+                            unsafe {
                                 self.builder
                                     .build_in_bounds_gep(
                                         buffer_type,
@@ -587,8 +826,8 @@ impl<'ctx> IRGenerator<'ctx> {
                                     .unwrap()
                             };
 
-                            let csp = self.call_stack_ptr.unwrap().clone();
-                            let cs = self.call_stack.unwrap().clone();
+                            let csp = self.call_stack_ptr.unwrap();
+                            let cs = self.call_stack.unwrap();
 
                             let stack_size_val = self
                                 .builder
@@ -674,7 +913,16 @@ impl<'ctx> IRGenerator<'ctx> {
                                     .into(),
                             )
                         }
-                        _ => panic!("Variable {} not found", ident.identifier_name),
+                        _ => {
+                            self.compiler_error(
+                                &format!(
+                                    "Binding `{}` not found in this scope",
+                                    ident.identifier_name
+                                ),
+                                false,
+                            );
+                            None
+                        }
                     }
                 }
             }
@@ -688,58 +936,83 @@ impl<'ctx> IRGenerator<'ctx> {
                     ),
                 };
 
-                let csp = self.call_stack_ptr.expect("CSP not initialized correctly");
-                let cs = self.call_stack.expect("CS not initialized correctly");
+                if CF_DEBUG_MODE {
+                    let csp = self.call_stack_ptr.expect("CSP not initialized correctly");
+                    let cs = self.call_stack.expect("CS not initialized correctly");
 
-                let stack_index = self
-                    .builder
-                    .build_load(
-                        self.context.i32_type(),
-                        csp.as_pointer_value(),
-                        "stack_index",
-                    )
-                    .unwrap();
-
-                let stack_slot_ptr = unsafe {
-                    self.builder
-                        .build_in_bounds_gep(
-                            self.context
-                                .ptr_type(inkwell::AddressSpace::default())
-                                .array_type(64),
-                            cs.as_pointer_value(),
-                            &[
-                                self.context.i32_type().const_zero(),
-                                stack_index.into_int_value(),
-                            ],
-                            "callstack_slot",
+                    let stack_index = self
+                        .builder
+                        .build_load(
+                            self.context.i32_type(),
+                            csp.as_pointer_value(),
+                            "stack_index",
                         )
-                        .unwrap()
-                };
+                        .unwrap();
 
-                let fn_name_ptr = self
-                    .builder
-                    .build_global_string_ptr(&function_name, "fnname");
+                    let stack_slot_ptr = unsafe {
+                        self.builder
+                            .build_in_bounds_gep(
+                                self.context
+                                    .ptr_type(inkwell::AddressSpace::default())
+                                    .array_type(64),
+                                cs.as_pointer_value(),
+                                &[
+                                    self.context.i32_type().const_zero(),
+                                    stack_index.into_int_value(),
+                                ],
+                                "callstack_slot",
+                            )
+                            .unwrap()
+                    };
 
-                self.builder
-                    .build_store(stack_slot_ptr, fn_name_ptr.unwrap().as_pointer_value())
-                    .unwrap();
+                    let fn_name_ptr = self
+                        .builder
+                        .build_global_string_ptr(&function_name, "fnname");
 
-                let incremented = self
-                    .builder
-                    .build_int_add(
-                        stack_index.into_int_value(),
-                        self.context.i32_type().const_int(1, false),
-                        "stack_index_plus1",
-                    )
-                    .unwrap();
+                    self.builder
+                        .build_store(stack_slot_ptr, fn_name_ptr.unwrap().as_pointer_value())
+                        .unwrap();
 
-                self.builder
-                    .build_store(csp.as_pointer_value(), incremented)
-                    .unwrap();
+                    let incremented = self
+                        .builder
+                        .build_int_add(
+                            stack_index.into_int_value(),
+                            self.context.i32_type().const_int(1, false),
+                            "stack_index_plus1",
+                        )
+                        .unwrap();
+
+                    self.builder
+                        .build_store(csp.as_pointer_value(), incremented)
+                        .unwrap();
+                }
 
                 let function = self.module.get_function(&function_name);
 
                 if let Some(func) = function {
+                    let mut has_valid_return = false;
+
+                    for bb in func.get_basic_blocks() {
+                        if let Some(term) = bb.get_terminator() {
+                            if term.get_opcode() == InstructionOpcode::Return {
+                                if let Some(ret_val) = ret_has_value(term) {
+                                    if !is_undef(ret_val) {
+                                        has_valid_return = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !has_valid_return {
+                        self.compiler_error(&format!(
+                            "Attempt to call a function which does not return correctly.\nhelp: make sure `{}` successfully returns `{}` in all code paths",
+                            function_name,
+                            func.get_type().get_return_type().unwrap().print_to_string().to_str().unwrap()
+                        ), true);
+                        panic!();
+                    }
+
                     let args: Vec<_> = cexpr
                         .args
                         .iter()
@@ -749,28 +1022,32 @@ impl<'ctx> IRGenerator<'ctx> {
                     let call_site = self.builder.build_call(func, &args, "calltmp").unwrap();
 
                     // Pop call stack
-                    let curr_ptr_val = self
-                        .builder
-                        .build_load(self.context.i32_type(), csp.as_pointer_value(), "stack_ptr")
-                        .unwrap()
-                        .into_int_value();
-                    let new_ptr_val = self
-                        .builder
-                        .build_int_sub(
-                            curr_ptr_val,
-                            self.context.i32_type().const_int(1, false),
-                            "stack_ptr_dec",
-                        )
-                        .unwrap();
-                    self.builder
-                        .build_store(csp.as_pointer_value(), new_ptr_val)
-                        .unwrap();
+                    if CF_DEBUG_MODE {
+                        let csp = self.call_stack_ptr.expect("CSP not initialized correctly");
 
-                    if let Some(ret_val) = call_site.try_as_basic_value().left() {
-                        Some(ret_val)
-                    } else {
-                        Some(self.context.i64_type().const_int(0, false).into())
+                        let curr_ptr_val = self
+                            .builder
+                            .build_load(
+                                self.context.i32_type(),
+                                csp.as_pointer_value(),
+                                "stack_ptr",
+                            )
+                            .unwrap()
+                            .into_int_value();
+                        let new_ptr_val = self
+                            .builder
+                            .build_int_sub(
+                                curr_ptr_val,
+                                self.context.i32_type().const_int(1, false),
+                                "stack_ptr_dec",
+                            )
+                            .unwrap();
+                        self.builder
+                            .build_store(csp.as_pointer_value(), new_ptr_val)
+                            .unwrap();
                     }
+
+                    call_site.try_as_basic_value().left()
                 } else {
                     match function_name.as_str() {
                         "print" => {
@@ -790,26 +1067,31 @@ impl<'ctx> IRGenerator<'ctx> {
                                 .unwrap();
 
                             // Pop call stack
-                            let curr_ptr_val = self
-                                .builder
-                                .build_load(
-                                    self.context.i32_type(),
-                                    csp.as_pointer_value(),
-                                    "stack_ptr",
-                                )
-                                .unwrap()
-                                .into_int_value();
-                            let new_ptr_val = self
-                                .builder
-                                .build_int_sub(
-                                    curr_ptr_val,
-                                    self.context.i32_type().const_int(1, false),
-                                    "stack_ptr_dec",
-                                )
-                                .unwrap();
-                            self.builder
-                                .build_store(csp.as_pointer_value(), new_ptr_val)
-                                .unwrap();
+                            if CF_DEBUG_MODE {
+                                let csp =
+                                    self.call_stack_ptr.expect("CSP not initialized correctly");
+
+                                let curr_ptr_val = self
+                                    .builder
+                                    .build_load(
+                                        self.context.i32_type(),
+                                        csp.as_pointer_value(),
+                                        "stack_ptr",
+                                    )
+                                    .unwrap()
+                                    .into_int_value();
+                                let new_ptr_val = self
+                                    .builder
+                                    .build_int_sub(
+                                        curr_ptr_val,
+                                        self.context.i32_type().const_int(1, false),
+                                        "stack_ptr_dec",
+                                    )
+                                    .unwrap();
+                                self.builder
+                                    .build_store(csp.as_pointer_value(), new_ptr_val)
+                                    .unwrap();
+                            }
 
                             None
                             // self.context.i32_type().const_int(0, false).into()
@@ -905,7 +1187,7 @@ impl<'ctx> IRGenerator<'ctx> {
                 }
             }
             Node::ListLiteral(llit) => {
-                let i32_type = self.context.i64_type();
+                let i32_type = self.context.i32_type();
 
                 let mut const_vals = vec![];
 
@@ -940,6 +1222,7 @@ impl<'ctx> IRGenerator<'ctx> {
                         let v = self
                             .get_variable(&ident.identifier_name)
                             .expect("Binding not found");
+                        self.mark_written(&ident.identifier_name);
                         if !v.mutable {
                             panic!(
                                 "Attempt to mutate an immutable binding `{}`",

@@ -7,10 +7,10 @@ use crate::{
     runtime::interpreter::Interpreter,
     tokenizer::tokenizer::tokenize,
 };
-use std::env;
 use std::fs::{self};
 use std::process::Command;
 use std::time::Instant;
+use std::{env, process};
 
 mod codegen;
 mod parser;
@@ -139,7 +139,10 @@ fn main() {
         let start = Instant::now();
         println!("Compiling `{}`...", file_name);
 
-        generator.generate_ir_for_nodes(ast);
+        let result = generator.generate_ir_for_nodes(ast);
+        if !result {
+            process::exit(1);
+        }
         let finish_irgen = start.elapsed();
         let finished_irgen_t = Instant::now();
 
