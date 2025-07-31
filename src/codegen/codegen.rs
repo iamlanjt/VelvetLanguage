@@ -528,6 +528,7 @@ impl<'ctx> IRGenerator<'ctx> {
                     .into(),
             ),
             Node::NumericLiteral(n) => {
+                let inferred_ty = self.type_table.get(&n.id.unwrap()).unwrap().clone();
                 let number_size = self
                     .checker
                     .check_expr(&Node::NumericLiteral(n.clone()), None);
@@ -788,18 +789,7 @@ impl<'ctx> IRGenerator<'ctx> {
                 match (left, right) {
                     (Some(BasicValueEnum::IntValue(l)), Some(BasicValueEnum::IntValue(r))) => {
                         let (l_coerced, r_coerced) = self.coerce_ints_to_common_type(l, r);
-                        self.enforce_type_equality(
-                            &l_coerced.into(),
-                            &r_coerced.into(),
-                            &bin_op.right,
-                            format!(
-                                "try typecasting\n->\t{} {} {}@{}",
-                                bin_op.left,
-                                bin_op.op,
-                                bin_op.right,
-                                l_coerced.get_type().print_to_string().to_str().unwrap()
-                            ),
-                        );
+
                         let val = match bin_op.op.as_str() {
                             "+" => self.builder.build_int_add(l_coerced, r_coerced, "addtmp"),
                             "-" => self.builder.build_int_sub(l_coerced, r_coerced, "subtmp"),
