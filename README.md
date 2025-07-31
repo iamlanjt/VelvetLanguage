@@ -59,3 +59,8 @@ In Velvet's Discord server, there is much more information and guides, as well a
 Join us below:
 
 https://discord.gg/ayEz2xag2s
+
+# Compiler Flags / Options
+Due to the beta status of the compiler, some features which are considered enabled by default on most compilers might be disabled by default in Velvet.
+
+- `cmp_do_coerce` ~ Should the compiler attempt to coerce basic values using a cast?

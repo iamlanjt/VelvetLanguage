@@ -1,6 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-use crate::{parser::nodetypes::Node, runtime::source_environment::source_environment::SourceEnv};
+use crate::{
+    parser::nodetypes::Node, runtime::source_environment::source_environment::SourceEnv,
+    typecheck::typecheck::T,
+};
 
 pub type NativeMethod = fn(&RuntimeVal, Vec<RuntimeVal>) -> RuntimeVal;
 
@@ -80,7 +83,7 @@ pub struct BoolVal {
 
 #[derive(Debug, Clone)]
 pub struct FunctionVal {
-    pub params: Vec<(String, String)>,
+    pub params: Vec<(String, T)>,
     pub fn_name: String,
     pub execution_body: Rc<Vec<Node>>,
     pub is_internal: bool,

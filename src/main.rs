@@ -2,6 +2,7 @@ use colored::Colorize;
 
 use crate::parser::parser::ExecutionTechnique;
 use crate::runtime::source_environment::source_environment::SourceEnv;
+use crate::typecheck::typecheck::TypeChecker;
 use crate::{
     parser::{nodetypes::Node, parser::Parser},
     runtime::interpreter::Interpreter,
@@ -16,6 +17,7 @@ mod codegen;
 mod parser;
 mod runtime;
 mod tokenizer;
+mod typecheck;
 #[macro_use]
 mod stdlib_interp;
 mod tests;
@@ -111,8 +113,6 @@ fn main() {
 
     let compile_ir = args.iter().any(|p| *p.to_lowercase() == *"compile");
 
-    let do_profile = args.iter().any(|p| *p.to_lowercase() == *"profile");
-
     let do_coerce = args.iter().any(|p| *p.to_lowercase() == *"cmp-do-coerce");
 
     let contents = fs::read_to_string(&file_path)
@@ -129,13 +129,45 @@ fn main() {
     );
     let ast = parser.produce_ast();
     // println!("{:#?}", ast);
+    let mut checker = TypeChecker::new();
+    checker.enter_scope();
+    for node in &ast {
+        checker.check_expr(node, None);
+    }
+
+    // println!("{:#?}", checker.type_table);
+    if !checker.errors.is_empty() {
+        println!("Typechecking failed");
+        println!("Typecheck errors;");
+        for err in &checker.errors {
+            eprintln!(
+                "{}: {}",
+                String::from("tc-err").red().bold(),
+                err.message.bold()
+            )
+        }
+        process::exit(1);
+    }
 
     if compile_ir {
         println!("{}\n  {}", "Notice!".on_red(), "The `compile` flag is present, so Velvet will attempt to compile your input rather than interpret it.\n  The compiler is still in beta, and behavior may not be uniform between interpretation and compilation methods.".yellow());
         use crate::codegen::codegen::IRGenerator;
         let file_name = args.get(1).unwrap();
         let context = inkwell::context::Context::create();
-        let mut generator = IRGenerator::new(&context, file_name, do_coerce);
+
+        let compile_time_checker = TypeChecker::new();
+
+        println!(
+            "[typecheck] inferred reference table size: {} element(s)",
+            checker.type_table.len()
+        );
+        let mut generator = IRGenerator::new(
+            &context,
+            file_name,
+            do_coerce,
+            compile_time_checker,
+            checker.type_table,
+        );
         let start = Instant::now();
         println!("Compiling `{}`...", file_name);
 

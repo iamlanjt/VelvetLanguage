@@ -1,7 +1,7 @@
 use core::fmt;
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
-use crate::tokenizer::token::VelvetToken;
+use crate::{tokenizer::token::VelvetToken, typecheck::typecheck::T};
 
 #[derive(Debug, Clone)]
 pub enum Node {
@@ -34,6 +34,7 @@ pub enum Node {
 }
 #[derive(Clone)]
 pub struct AstSnippet {
+    pub id: Option<usize>,
     pub name: String,
     pub args: Vec<SnippetParam>,
     pub body: Vec<Node>,
@@ -41,61 +42,76 @@ pub struct AstSnippet {
 
 #[derive(Debug, Clone)]
 pub struct TypeCast {
+    pub id: Option<usize>,
     pub left: Box<Node>,
-    pub target_type: String,
+    pub target_type: T,
 }
 
 #[derive(Debug, Clone)]
 pub struct InterpreterBlock {
+    pub id: Option<usize>,
     pub feature: String,
     pub body: Vec<Box<Node>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct NullLiteral;
+pub struct NullLiteral {
+    pub id: Option<usize>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Block {
+    pub id: Option<usize>,
     pub body: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct NullishCoalescing {
+    pub id: Option<usize>,
     pub left: Box<Node>,
     pub right: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SnippetParam {
+    pub id: Option<usize>,
     pub name: String,
     pub is_optional: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct NoOpNode {}
+pub struct NoOpNode {
+    pub id: Option<usize>,
+}
 
 #[derive(Debug, Clone)]
 pub struct OptionalArg {
+    pub id: Option<usize>,
     pub arg: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct WhileStmt {
+    pub id: Option<usize>,
     pub condition: Box<Node>,
     pub body: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct IfStmt {
+    pub id: Option<usize>,
     pub condition: Box<Node>,
     pub body: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Eof {}
+pub struct Eof {
+    pub id: Option<usize>,
+}
 
 #[derive(Debug, Clone)]
 pub struct BinaryExpr {
+    pub id: Option<usize>,
     pub left: Box<Node>,
     pub right: Box<Node>,
     pub op: String,
@@ -103,12 +119,14 @@ pub struct BinaryExpr {
 
 #[derive(Debug, Clone)]
 pub struct AssignmentExpr {
+    pub id: Option<usize>,
     pub left: Box<Node>,
     pub value: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Iterator {
+    pub id: Option<usize>,
     pub left: VelvetToken,
     pub right: Box<Node>,
     pub body: Vec<Node>,
@@ -116,14 +134,16 @@ pub struct Iterator {
 
 #[derive(Debug, Clone)]
 pub struct FunctionDefinition {
-    pub params: Vec<(String, String)>,
+    pub id: Option<usize>,
+    pub params: Vec<(String, T)>,
     pub name: String,
     pub body: Rc<Vec<Node>>,
-    pub return_type: String,
+    pub return_type: T,
 }
 
 #[derive(Debug, Clone)]
 pub struct Comparator {
+    pub id: Option<usize>,
     pub lhs: Box<Node>,
     pub rhs: Box<Node>,
     pub op: String,
@@ -131,36 +151,42 @@ pub struct Comparator {
 
 #[derive(Debug, Clone)]
 pub struct Identifier {
+    pub id: Option<usize>,
     pub identifier_name: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Return {
+    pub id: Option<usize>,
     pub return_statement: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VarDeclaration {
+    pub id: Option<usize>,
     pub is_mutable: bool,
     pub var_identifier: String,
-    pub var_type: String,
+    pub var_type: T,
     pub var_value: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CallExpr {
+    pub id: Option<usize>,
     pub args: Vec<Node>,
     pub caller: Box<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MatchExpr {
+    pub id: Option<usize>,
     pub target: Box<Node>,
     pub arms: Vec<(Node, Node)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MemberExpr {
+    pub id: Option<usize>,
     pub object: Box<Node>,
     pub property: Box<Node>,
     pub is_computed: bool,
@@ -169,26 +195,31 @@ pub struct MemberExpr {
 // Literals
 #[derive(Debug, Clone)]
 pub struct NumericLiteral {
+    pub id: Option<usize>,
     pub literal_value: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct BoolLiteral {
+    pub id: Option<usize>,
     pub literal_value: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct ListLiteral {
+    pub id: Option<usize>,
     pub props: Vec<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ObjectLiteral {
+    pub id: Option<usize>,
     pub props: HashMap<String, Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StringLiteral {
+    pub id: Option<usize>,
     pub literal_value: String,
 }
 

@@ -205,6 +205,7 @@ impl Interpreter {
                 RuntimeVal::FunctionVal(_) => {
                     let left_result = self.evaluate_call_expr(
                         &CallExpr {
+                            id: None,
                             args: Vec::from([*mexpr.target.clone()]),
                             caller: Box::new(arm.0.clone()),
                         },
@@ -220,6 +221,7 @@ impl Interpreter {
                 RuntimeVal::InternalFunctionVal(_) => {
                     let left_result = self.evaluate_call_expr(
                         &CallExpr {
+                            id: None,
                             args: Vec::from([*mexpr.target.clone()]),
                             caller: Box::new(arm.0.clone()),
                         },

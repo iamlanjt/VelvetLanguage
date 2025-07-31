@@ -11,6 +11,7 @@ use crate::{
         token::{VelvetToken, VelvetTokenType},
         tokenizer::{join_tokenizer_output, tokenize},
     },
+    typecheck::typecheck::T,
 };
 
 pub struct Parser {
@@ -19,6 +20,7 @@ pub struct Parser {
     tkn_chain: Vec<VelvetToken>,
     ast_snippets: Vec<AstSnippet>,
     etech: ExecutionTechnique,
+    cur_node: usize,
 }
 
 #[derive(Clone, PartialEq)]
@@ -36,6 +38,7 @@ impl Parser {
             tkn_chain: Vec::new(),
             ast_snippets: Vec::new(),
             etech,
+            cur_node: 0,
         }
     }
 
@@ -53,6 +56,26 @@ impl Parser {
         self.token_pointer += 1;
 
         current_token
+    }
+
+    fn alloc_node_id(&mut self) -> usize {
+        let id = self.cur_node;
+        self.cur_node += 1;
+        id
+    }
+
+    fn identifier_to_type(&self, ident: &str) -> T {
+        match ident.to_lowercase().as_str() {
+            "i8" => T::Integer8,
+            "i16" => T::Integer16,
+            "i32" | "number" => T::Integer32,
+            "i64" => T::Integer64,
+            "i128" => T::Integer128,
+            "bool" => T::Boolean,
+            "string" => T::String,
+            "any" => T::Any,
+            _ => panic!("`{}` is not a valid type", ident),
+        }
     }
 
     fn error(&mut self, faulty_token: &VelvetToken, msg: &str) {
@@ -100,19 +123,22 @@ impl Parser {
             VelvetTokenType::DollarSign => self.parse_interpreter_block(),
             VelvetTokenType::NoOp => {
                 self.eat();
-                Box::new(Node::NoOpNode(NoOpNode {}))
+                Box::new(Node::NoOpNode(NoOpNode {
+                    id: Some(self.alloc_node_id()),
+                }))
             }
             _ => self.parse_expr(),
         }
     }
 
-    pub fn parse_type_cast(&mut self, left: Box<Node>, right: String) -> Box<Node> {
+    pub fn parse_type_cast(&mut self, left: Box<Node>, right: T) -> Box<Node> {
         if self.etech == ExecutionTechnique::Interpretation {
             let current_token = self.current().clone();
             self.error(&current_token, "You can only typecast in compilation mode.");
         }
 
         Box::new(Node::TypeCast(TypeCast {
+            id: Some(self.alloc_node_id()),
             left,
             target_type: right,
         }))
@@ -141,6 +167,7 @@ impl Parser {
         );
 
         Box::new(Node::InterpreterBlock(InterpreterBlock {
+            id: Some(self.alloc_node_id()),
             feature,
             body: body_nodes,
         }))
@@ -154,6 +181,7 @@ impl Parser {
 
         let this_statmenet = self.parse_expr();
         Box::new(Node::Return(Return {
+            id: Some(self.alloc_node_id()),
             return_statement: this_statmenet,
         }))
     }
@@ -167,12 +195,14 @@ impl Parser {
             match arg {
                 Node::Identifier(ident) => {
                     new_args.push(SnippetParam {
+                        id: Some(self.alloc_node_id()),
                         name: ident.identifier_name,
                         is_optional: false,
                     });
                 }
                 Node::OptionalArg(opt_arg) => match *opt_arg.arg {
                     Node::Identifier(inner_ident) => new_args.push(SnippetParam {
+                        id: Some(self.alloc_node_id()),
                         name: inner_ident.identifier_name,
                         is_optional: true,
                     }),
@@ -191,7 +221,9 @@ impl Parser {
 
         self.expect_token(VelvetTokenType::RBrace, "Expected end of Snippet body");
 
+        let alloc = self.alloc_node_id();
         self.ast_snippets.push(AstSnippet {
+            id: Some(alloc),
             name: snippet_name.literal_value.to_string(),
             args: new_args,
             body,
@@ -206,7 +238,7 @@ impl Parser {
             .literal_value
             .clone();
         let args = self.parse_fdef_args(); // self.parse_args();
-        let mut parameter_names: Vec<(String, String)> = Vec::new();
+        let mut parameter_names: Vec<(String, T)> = Vec::new();
         for arg in args {
             match arg.0 {
                 Node::Identifier(ref name) => {
@@ -236,17 +268,18 @@ impl Parser {
         let rc_body = Rc::new(body);
 
         return Box::new(Node::FunctionDefinition(FunctionDefinition {
+            id: Some(self.alloc_node_id()),
             params: parameter_names,
             name: function_name,
             body: rc_body,
-            return_type,
+            return_type: self.identifier_to_type(&return_type),
         }));
     }
 
     // Same thing as `parse_args`, but requires explicit type declaration using `as` keyword
-    pub fn parse_fdef_args(&mut self) -> Vec<(Node, String)> {
+    pub fn parse_fdef_args(&mut self) -> Vec<(Node, T)> {
         self.expect_token(VelvetTokenType::LParen, "Expected function params");
-        let args: Vec<(Node, String)> = if self.current().kind == VelvetTokenType::RParen {
+        let args: Vec<(Node, T)> = if self.current().kind == VelvetTokenType::RParen {
             Vec::new()
         } else {
             self.parse_fdef_argument_list()
@@ -257,15 +290,15 @@ impl Parser {
         args
     }
 
-    pub fn parse_fdef_argument_list(&mut self) -> Vec<(Node, String)> {
-        let mut args: Vec<(Node, String)> = Vec::new();
+    pub fn parse_fdef_argument_list(&mut self) -> Vec<(Node, T)> {
+        let mut args: Vec<(Node, T)> = Vec::new();
         let first_arg = *self.parse_assignment_expr();
         self.expect_token(
             VelvetTokenType::Keywrd_As,
             "Function parameters must be explicitly typed",
         );
         let arg_type = self.expect_token(VelvetTokenType::Identifier, "Expected type identifier");
-        args.push((first_arg, arg_type.literal_value));
+        args.push((first_arg, self.identifier_to_type(&arg_type.literal_value)));
 
         while !self.at_end() && self.current().kind == VelvetTokenType::Comma {
             self.eat();
@@ -277,7 +310,7 @@ impl Parser {
 
             let arg_type =
                 self.expect_token(VelvetTokenType::Identifier, "Expected type identifier");
-            args.push((next_arg, arg_type.literal_value));
+            args.push((next_arg, self.identifier_to_type(&arg_type.literal_value)));
         }
 
         args
@@ -305,7 +338,10 @@ impl Parser {
             let to_push = self.parse_assignment_expr();
             if !self.at_end() && self.current().kind == VelvetTokenType::QuestionMark {
                 self.eat();
-                args.push(Node::OptionalArg(OptionalArg { arg: to_push }));
+                args.push(Node::OptionalArg(OptionalArg {
+                    id: Some(self.alloc_node_id()),
+                    arg: to_push,
+                }));
             } else {
                 args.push(*to_push);
             }
@@ -319,7 +355,11 @@ impl Parser {
         if !self.at_end() && self.current().kind == VelvetTokenType::Eq {
             self.eat();
             let value = self.parse_assignment_expr();
-            return Box::new(Node::AssignmentExpr(AssignmentExpr { left, value }));
+            return Box::new(Node::AssignmentExpr(AssignmentExpr {
+                id: Some(self.alloc_node_id()),
+                left,
+                value,
+            }));
         }
         left
     }
@@ -331,7 +371,11 @@ impl Parser {
             self.eat();
 
             let right = self.parse_comparator_expr();
-            left = Box::new(Node::NullishCoalescing(NullishCoalescing { left, right }));
+            left = Box::new(Node::NullishCoalescing(NullishCoalescing {
+                id: Some(self.alloc_node_id()),
+                left,
+                right,
+            }));
         }
 
         left
@@ -351,6 +395,7 @@ impl Parser {
             let rhs = self.parse_list_expr();
 
             return Box::new(Node::Comparator(Comparator {
+                id: Some(self.alloc_node_id()),
                 lhs,
                 rhs,
                 op: operator,
@@ -381,7 +426,10 @@ impl Parser {
         }
         self.eat();
 
-        Box::new(Node::ListLiteral(ListLiteral { props }))
+        Box::new(Node::ListLiteral(ListLiteral {
+            id: Some(self.alloc_node_id()),
+            props,
+        }))
     }
 
     pub fn parse_object_expr(&mut self) -> Box<Node> {
@@ -414,7 +462,10 @@ impl Parser {
         }
         self.expect_token(VelvetTokenType::RBrace, "Expected end of object");
 
-        Box::new(Node::ObjectLiteral(ObjectLiteral { props }))
+        Box::new(Node::ObjectLiteral(ObjectLiteral {
+            id: Some(self.alloc_node_id()),
+            props,
+        }))
     }
 
     // bindm my_counter as i32 = 0
@@ -431,16 +482,17 @@ impl Parser {
             "Explicit typing when defining a var is required. [bind example as bool = true]",
         );
 
-        let var_type = self
+        let var_type_str = &self
             .expect_token(VelvetTokenType::Identifier, "Expected type")
-            .literal_value
-            .clone();
+            .literal_value;
+        let var_type = self.identifier_to_type(var_type_str);
 
         self.expect_token(VelvetTokenType::Eq, "");
 
         let var_value = self.parse_expr();
 
         Box::new(Node::VarDeclaration(VarDeclaration {
+            id: Some(self.alloc_node_id()),
             is_mutable,
             var_identifier: identifier,
             var_type,
@@ -468,6 +520,7 @@ impl Parser {
             let operator = self.eat().literal_value.clone();
             let right = self.parse_multiplicative_expr();
             left = Box::new(Node::BinaryExpr(BinaryExpr {
+                id: Some(self.alloc_node_id()),
                 left,
                 right,
                 op: operator.to_string(),
@@ -492,8 +545,9 @@ impl Parser {
                     .expect_token(VelvetTokenType::Identifier, "Expected type after typecast")
                     .literal_value
                     .clone();
+                let t_parsed = self.identifier_to_type(&t);
 
-                left = self.parse_type_cast(left, t);
+                left = self.parse_type_cast(left, t_parsed);
             } else {
                 if next_kind != VelvetTokenType::Asterisk && next_kind != VelvetTokenType::Slash {
                     break;
@@ -508,6 +562,7 @@ impl Parser {
                 // any other bugs.
                 let right = self.parse_call_member_expr();
                 left = Box::new(Node::BinaryExpr(BinaryExpr {
+                    id: Some(self.alloc_node_id()),
                     left,
                     right,
                     op: operator.to_string(),
@@ -543,6 +598,7 @@ impl Parser {
                 match property.as_ref() {
                     Node::Identifier(_) => {
                         object = Box::new(Node::MemberExpr(MemberExpr {
+                            id: Some(self.alloc_node_id()),
                             object,
                             property,
                             is_computed: false,
@@ -561,6 +617,7 @@ impl Parser {
                 self.expect_token(VelvetTokenType::RBracket, "Expected closing bracket");
 
                 object = Box::new(Node::MemberExpr(MemberExpr {
+                    id: Some(self.alloc_node_id()),
                     object,
                     property,
                     is_computed: true,
@@ -576,16 +633,25 @@ impl Parser {
         bindings: &HashMap<String, Box<Node>>,
     ) -> Box<Node> {
         match node.as_ref() {
-            Node::Identifier(Identifier { identifier_name }) => {
+            Node::Identifier(Identifier {
+                id: None,
+                identifier_name,
+            }) => {
                 if let Some(replacement) = bindings.get(identifier_name) {
                     return replacement.clone();
                 }
                 Box::new(Node::Identifier(Identifier {
+                    id: None,
                     identifier_name: identifier_name.clone(),
                 }))
             }
 
-            Node::CallExpr(CallExpr { caller, args }) => Box::new(Node::CallExpr(CallExpr {
+            Node::CallExpr(CallExpr {
+                id: None,
+                caller,
+                args,
+            }) => Box::new(Node::CallExpr(CallExpr {
+                id: None,
                 caller: Self::substitute_snippet_vars(caller, bindings),
                 args: args
                     .iter()
@@ -593,45 +659,64 @@ impl Parser {
                     .collect(),
             })),
 
-            Node::BinaryExpr(BinaryExpr { left, right, op }) => {
-                Box::new(Node::BinaryExpr(BinaryExpr {
-                    left: Self::substitute_snippet_vars(left, bindings),
-                    right: Self::substitute_snippet_vars(right, bindings),
-                    op: op.clone(),
-                }))
-            }
+            Node::BinaryExpr(BinaryExpr {
+                id: None,
+                left,
+                right,
+                op,
+            }) => Box::new(Node::BinaryExpr(BinaryExpr {
+                id: None,
+                left: Self::substitute_snippet_vars(left, bindings),
+                right: Self::substitute_snippet_vars(right, bindings),
+                op: op.clone(),
+            })),
 
-            Node::NullishCoalescing(NullishCoalescing { left, right }) => {
-                Box::new(Node::NullishCoalescing(NullishCoalescing {
-                    left: Self::substitute_snippet_vars(left, bindings),
-                    right: Self::substitute_snippet_vars(right, bindings),
-                }))
-            }
+            Node::NullishCoalescing(NullishCoalescing {
+                id: None,
+                left,
+                right,
+            }) => Box::new(Node::NullishCoalescing(NullishCoalescing {
+                id: None,
+                left: Self::substitute_snippet_vars(left, bindings),
+                right: Self::substitute_snippet_vars(right, bindings),
+            })),
 
-            Node::Return(Return { return_statement }) => Box::new(Node::Return(Return {
+            Node::Return(Return {
+                id: None,
+                return_statement,
+            }) => Box::new(Node::Return(Return {
+                id: None,
                 return_statement: Self::substitute_snippet_vars(return_statement, bindings),
             })),
 
             Node::VarDeclaration(VarDeclaration {
+                id: None,
                 is_mutable,
                 var_identifier,
                 var_type,
                 var_value,
             }) => Box::new(Node::VarDeclaration(VarDeclaration {
+                id: None,
                 is_mutable: *is_mutable,
                 var_identifier: var_identifier.clone(),
                 var_type: var_type.clone(),
                 var_value: Self::substitute_snippet_vars(var_value, bindings),
             })),
 
-            Node::Block(Block { body }) => Box::new(Node::Block(Block {
+            Node::Block(Block { id: None, body }) => Box::new(Node::Block(Block {
+                id: None,
                 body: body
                     .iter()
                     .map(|stmt| *Self::substitute_snippet_vars(&Box::new(stmt.clone()), bindings))
                     .collect(),
             })),
 
-            Node::IfStmt(IfStmt { condition, body }) => Box::new(Node::IfStmt(IfStmt {
+            Node::IfStmt(IfStmt {
+                id: None,
+                condition,
+                body,
+            }) => Box::new(Node::IfStmt(IfStmt {
+                id: None,
                 condition: Self::substitute_snippet_vars(condition, bindings),
                 body: body
                     .iter()
@@ -639,32 +724,44 @@ impl Parser {
                     .collect(),
             })),
 
-            Node::WhileStmt(WhileStmt { condition, body }) => {
-                Box::new(Node::WhileStmt(WhileStmt {
-                    condition: Self::substitute_snippet_vars(condition, bindings),
-                    body: body
-                        .iter()
-                        .map(|stmt| {
-                            *Self::substitute_snippet_vars(&Box::new(stmt.clone()), bindings)
-                        })
-                        .collect(),
-                }))
-            }
+            Node::WhileStmt(WhileStmt {
+                id: None,
+                condition,
+                body,
+            }) => Box::new(Node::WhileStmt(WhileStmt {
+                id: None,
+                condition: Self::substitute_snippet_vars(condition, bindings),
+                body: body
+                    .iter()
+                    .map(|stmt| *Self::substitute_snippet_vars(&Box::new(stmt.clone()), bindings))
+                    .collect(),
+            })),
 
-            Node::Iterator(Iterator { left, right, body }) => {
+            Node::Iterator(Iterator {
+                id: None,
+                left,
+                right,
+                body,
+            }) => {
                 let new_right = Self::substitute_snippet_vars(right, bindings);
                 let new_body = body
                     .iter()
                     .map(|stmt| *Self::substitute_snippet_vars(&Box::new(stmt.clone()), bindings))
                     .collect();
                 Box::new(Node::Iterator(Iterator {
+                    id: None,
                     left: left.clone(), // assume left is a plain identifier token
                     right: new_right,
                     body: new_body,
                 }))
             }
 
-            Node::MatchExpr(MatchExpr { target, arms }) => Box::new(Node::MatchExpr(MatchExpr {
+            Node::MatchExpr(MatchExpr {
+                id: None,
+                target,
+                arms,
+            }) => Box::new(Node::MatchExpr(MatchExpr {
+                id: None,
                 target: Self::substitute_snippet_vars(target, bindings),
                 arms: arms
                     .iter()
@@ -678,24 +775,30 @@ impl Parser {
             })),
 
             Node::MemberExpr(MemberExpr {
+                id: None,
                 object,
                 property,
                 is_computed,
             }) => Box::new(Node::MemberExpr(MemberExpr {
+                id: None,
                 object: Self::substitute_snippet_vars(object, bindings),
                 property: Self::substitute_snippet_vars(property, bindings),
                 is_computed: *is_computed,
             })),
 
-            Node::ListLiteral(ListLiteral { props }) => Box::new(Node::ListLiteral(ListLiteral {
-                props: props
-                    .iter()
-                    .map(|p| *Self::substitute_snippet_vars(&Box::new(p.clone()), bindings))
-                    .collect(),
-            })),
+            Node::ListLiteral(ListLiteral { id: None, props }) => {
+                Box::new(Node::ListLiteral(ListLiteral {
+                    id: None,
+                    props: props
+                        .iter()
+                        .map(|p| *Self::substitute_snippet_vars(&Box::new(p.clone()), bindings))
+                        .collect(),
+                }))
+            }
 
-            Node::ObjectLiteral(ObjectLiteral { props }) => {
+            Node::ObjectLiteral(ObjectLiteral { id: None, props }) => {
                 Box::new(Node::ObjectLiteral(ObjectLiteral {
+                    id: None,
                     props: props
                         .iter()
                         .map(|(k, v)| {
@@ -707,13 +810,17 @@ impl Parser {
                         .collect(),
                 }))
             }
-            Node::Comparator(Comparator { lhs, rhs, op }) => {
-                Box::new(Node::Comparator(Comparator {
-                    lhs: Self::substitute_snippet_vars(lhs, bindings),
-                    rhs: Self::substitute_snippet_vars(rhs, bindings),
-                    op: op.to_string(),
-                }))
-            }
+            Node::Comparator(Comparator {
+                id: None,
+                lhs,
+                rhs,
+                op,
+            }) => Box::new(Node::Comparator(Comparator {
+                id: None,
+                lhs: Self::substitute_snippet_vars(lhs, bindings),
+                rhs: Self::substitute_snippet_vars(rhs, bindings),
+                op: op.to_string(),
+            })),
 
             // If it's a literal or something that doesn't contain other nodes, just clone it
             other => Box::new(other.clone()),
@@ -745,7 +852,9 @@ impl Parser {
         for (i, param) in snippet.args.iter().enumerate() {
             let arg_val = call_args.get(i).cloned().unwrap_or_else(|| {
                 if param.is_optional {
-                    Node::NullLiteral(NullLiteral)
+                    Node::NullLiteral(NullLiteral {
+                        id: Some(self.alloc_node_id()),
+                    })
                 } else {
                     panic!(
                         "Missing required argument '{}' in snippet '{}'",
@@ -764,17 +873,25 @@ impl Parser {
             new_body.push(substituted);
         }
 
-        Box::new(Node::Block(Block { body: new_body }))
+        Box::new(Node::Block(Block {
+            id: Some(self.alloc_node_id()),
+            body: new_body,
+        }))
     }
 
     pub fn parse_call_expr(&mut self, caller: Box<Node>) -> Box<Node> {
-        if let Node::Identifier(Identifier { identifier_name }) = caller.as_ref() {
+        if let Node::Identifier(Identifier {
+            id: None,
+            identifier_name,
+        }) = caller.as_ref()
+        {
             if identifier_name.ends_with('#') {
                 return self.expand_snippet_invocation(identifier_name.clone());
             }
         }
 
         let mut call_expr = Box::new(Node::CallExpr(CallExpr {
+            id: Some(self.alloc_node_id()),
             args: self.parse_args(),
             caller,
         }));
@@ -800,7 +917,11 @@ impl Parser {
             VelvetTokenType::RBrace,
             "Expected closing brace for body of if statement",
         );
-        Box::new(Node::IfStmt(IfStmt { condition, body }))
+        Box::new(Node::IfStmt(IfStmt {
+            id: Some(self.alloc_node_id()),
+            condition,
+            body,
+        }))
     }
 
     pub fn parse_while_stmt(&mut self) -> Box<Node> {
@@ -819,6 +940,7 @@ impl Parser {
             "Expected closing brace for body of while loop",
         );
         Box::new(Node::WhileStmt(WhileStmt {
+            id: Some(self.alloc_node_id()),
             condition: loop_condition,
             body,
         }))
@@ -840,7 +962,12 @@ impl Parser {
             VelvetTokenType::RBrace,
             "Expected closing brace for body of for loop",
         );
-        Box::new(Node::Iterator(Iterator { left, right, body }))
+        Box::new(Node::Iterator(Iterator {
+            id: Some(self.alloc_node_id()),
+            left,
+            right,
+            body,
+        }))
     }
 
     pub fn parse_block_expr(&mut self) -> Box<Node> {
@@ -852,7 +979,10 @@ impl Parser {
             }
             self.eat();
 
-            Box::new(Node::Block(Block { body: block_body }))
+            Box::new(Node::Block(Block {
+                id: Some(self.alloc_node_id()),
+                body: block_body,
+            }))
         } else {
             self.parse_expr()
         }
@@ -884,7 +1014,11 @@ impl Parser {
             VelvetTokenType::RBrace,
             "Expected end of match statement body",
         );
-        Box::new(Node::MatchExpr(MatchExpr { target, arms }))
+        Box::new(Node::MatchExpr(MatchExpr {
+            id: Some(self.alloc_node_id()),
+            target,
+            arms,
+        }))
     }
 
     pub fn parse_primary_expr(&mut self) -> Box<Node> {
@@ -893,24 +1027,29 @@ impl Parser {
 
         match tk.kind {
             VelvetTokenType::Number => Box::new(Node::NumericLiteral(NumericLiteral {
+                id: Some(self.alloc_node_id()),
                 literal_value: tk.literal_value.clone(),
             })),
             VelvetTokenType::Identifier => {
                 if tk.literal_value == "true" {
                     Box::new(Node::BoolLiteral(BoolLiteral {
+                        id: Some(self.alloc_node_id()),
                         literal_value: true,
                     }))
                 } else if tk.literal_value == "false" {
                     Box::new(Node::BoolLiteral(BoolLiteral {
+                        id: Some(self.alloc_node_id()),
                         literal_value: false,
                     }))
                 } else {
                     Box::new(Node::Identifier(Identifier {
+                        id: Some(self.alloc_node_id()),
                         identifier_name: tk.literal_value.clone(),
                     }))
                 }
             }
             VelvetTokenType::Str => Box::new(Node::StringLiteral(StringLiteral {
+                id: Some(self.alloc_node_id()),
                 literal_value: tk.literal_value.clone(),
             })),
             VelvetTokenType::Keywrd_While => self.parse_while_stmt(),
@@ -922,7 +1061,7 @@ impl Parser {
             VelvetTokenType::Keywrd_For => self.parse_for_loop(),
             VelvetTokenType::WallArrow => {
                 self.parse_snippet_definition();
-                return Box::new(Node::NoOpNode(NoOpNode {}));
+                return Box::new(Node::NoOpNode(NoOpNode { id: None }));
             }
             VelvetTokenType::Keywrd_Match => self.parse_match_expr(),
             _ => {

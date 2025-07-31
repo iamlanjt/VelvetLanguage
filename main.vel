@@ -1,5 +1,6 @@
--> invalid_return_fn() => i32 {
-    ;; return nothing
-}
+;; run with flags `compile cmp-do-coerce` for non-error compilation
+bind inferred as any = 2147483648 + 1
+bind non_inferred as i32 = 2147483647 + 1
 
-invalid_return_fn() ;; omit this call to pass compilation
+print(inferred)
+print(non_inferred)

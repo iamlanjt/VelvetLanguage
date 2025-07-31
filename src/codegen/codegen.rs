@@ -13,7 +13,10 @@ use inkwell::{
     },
 };
 
-use crate::parser::nodetypes::Node;
+use crate::{
+    parser::nodetypes::Node,
+    typecheck::typecheck::{T, TypeChecker},
+};
 
 // TODO ideally move these constants to compiler flags;
 //      at the time of writing, both commnts and the compiler are undergoing very complex canges,
@@ -50,6 +53,8 @@ pub struct IRGenerator<'ctx> {
     pub context: &'ctx Context,
     pub builder: Builder<'ctx>,
     pub module: Module<'ctx>,
+    pub type_table: HashMap<usize, T>,
+    checker: TypeChecker,
     variables: Vec<HashMap<String, IRVar<'ctx>>>,
     format_str_int: Option<PointerValue<'ctx>>,
     format_str_str: Option<PointerValue<'ctx>>,
@@ -91,7 +96,13 @@ fn is_undef(value: BasicValueEnum) -> bool {
 }
 
 impl<'ctx> IRGenerator<'ctx> {
-    pub fn new(context: &'ctx Context, module_name: &str, coerce_types: bool) -> Self {
+    pub fn new(
+        context: &'ctx Context,
+        module_name: &str,
+        coerce_types: bool,
+        checker: TypeChecker,
+        type_table: HashMap<usize, T>,
+    ) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
 
@@ -99,9 +110,11 @@ impl<'ctx> IRGenerator<'ctx> {
             context,
             builder,
             module,
+            type_table,
             variables: Vec::new(),
             format_str_int: None,
             format_str_str: None,
+            checker,
             coerce_types,
             call_stack: None,
             call_stack_ptr: None,
@@ -163,6 +176,7 @@ impl<'ctx> IRGenerator<'ctx> {
     fn enter_scope(&mut self) {
         self.variables.push(HashMap::new());
         self.scope_stack.push(HashMap::new());
+        self.checker.enter_scope();
     }
 
     fn exit_scope(&mut self) {
@@ -181,6 +195,8 @@ impl<'ctx> IRGenerator<'ctx> {
                 ));
             }
         }
+
+        self.checker.exit_scope();
     }
 
     fn mark_read(&mut self, name: &str) {
@@ -307,6 +323,13 @@ impl<'ctx> IRGenerator<'ctx> {
         } else {
             let i8ptr_type = self.context.ptr_type(AddressSpace::default());
             let printf_type = self.context.i64_type().fn_type(&[i8ptr_type.into()], true);
+            self.checker.scopes.last_mut().unwrap().insert(
+                "printf".to_string(),
+                T::Function {
+                    params: Vec::new(),
+                    return_type: Box::new(T::Void),
+                },
+            );
             self.module.add_function("printf", printf_type, None)
         }
     }
@@ -388,20 +411,23 @@ impl<'ctx> IRGenerator<'ctx> {
     }
 
     // Helper function used for converting type identifiers to LLVM types
-    pub fn str_to_llvm_type(&mut self, str_type: &str) -> BasicTypeEnum<'ctx> {
-        match str_type {
-            // GP number that equates to the default compiler-defined number, currently i32
-            "number" => self.context.i32_type().into(),
-            "i8" => self.context.i8_type().into(),
-            "i16" => self.context.i16_type().into(),
-            "i32" => self.context.i32_type().into(),
-            "i64" => self.context.i64_type().into(),
-            "string" => self.context.ptr_type(AddressSpace::default()).into(),
+    pub fn t_to_llvm_type(&mut self, t: &T) -> BasicTypeEnum<'ctx> {
+        match t {
+            T::Integer8 => self.context.i8_type().into(),
+            T::Integer16 => self.context.i16_type().into(),
+            T::Integer32 => self.context.i32_type().into(),
+            T::Integer64 => self.context.i64_type().into(),
+            T::Boolean => self.context.bool_type().into(),
+            T::String => self.context.ptr_type(AddressSpace::default()).into(),
+            T::Any => {
+                // All `any` types should be resolved (either inferred to a basic type, or errored due to a lack of context)
+                // before the code-gen phase
+                // if one makes it through, there is a fundemental logic error in the typechecker
+                self.compiler_error("Typechecker logic failure; an `any` type has been passed down to code generation.\n-> help: This should be considered a bug in Velvet; as a temporary fix, you can stop using `any`.", true);
+                panic!();
+            }
             _ => {
-                self.compiler_error(
-                    &format!("Failed to map identifier `{}` to a valid type", str_type),
-                    false,
-                );
+                self.compiler_error(&format!("Failed to map T `{}` to a valid type", t), false);
                 self.context.i32_type().into()
             }
         }
@@ -457,11 +483,31 @@ impl<'ctx> IRGenerator<'ctx> {
 
         self.exit_scope();
 
+        let return_type = self.context.i32_type();
+
         if let Some(x) = last_val {
-            self.builder.build_return(Some(&x)).unwrap();
+            let val = match x {
+                BasicValueEnum::IntValue(iv) => {
+                    let ty = iv.get_type();
+                    if ty == return_type {
+                        iv
+                    } else if ty.get_bit_width() < return_type.get_bit_width() {
+                        self.builder
+                            .build_int_z_extend(iv, return_type, "zext_ret")
+                            .unwrap()
+                    } else if ty.get_bit_width() > return_type.get_bit_width() {
+                        self.builder
+                            .build_int_truncate(iv, return_type, "trunc_ret")
+                            .unwrap()
+                    } else {
+                        iv
+                    }
+                }
+                _ => return_type.const_zero(),
+            };
+            self.builder.build_return(Some(&val)).unwrap();
         } else {
-            // there is no return value, so return zero (success) to the main function
-            let zero = self.context.i32_type().const_int(0, false);
+            let zero = return_type.const_int(0, false);
             self.builder.build_return(Some(&zero)).unwrap();
         }
 
@@ -482,10 +528,25 @@ impl<'ctx> IRGenerator<'ctx> {
                     .into(),
             ),
             Node::NumericLiteral(n) => {
+                let number_size = self
+                    .checker
+                    .check_expr(&Node::NumericLiteral(n.clone()), None);
+
                 let parsed_val = n.literal_value.parse::<u64>().unwrap();
-                let base_type = self.context.i32_type();
-                Some(base_type.const_int(parsed_val, false).into())
+                let base_type = self.t_to_llvm_type(&number_size);
+                Some(
+                    base_type
+                        .into_int_type()
+                        .const_int(parsed_val, false)
+                        .into(),
+                )
             }
+            Node::BoolLiteral(b) => Some(
+                self.context
+                    .bool_type()
+                    .const_int(if b.literal_value { 1 } else { 0 }, false)
+                    .into(),
+            ),
             Node::IfStmt(ifs) => {
                 let parent_func = self
                     .builder
@@ -524,8 +585,8 @@ impl<'ctx> IRGenerator<'ctx> {
                     .generate_ir_for_expr(&cast.left)
                     .expect("Expected value to cast");
 
-                let target_llvm_type = self.str_to_llvm_type(&cast.target_type);
-                let target_type_str = cast.target_type.as_str();
+                let target_llvm_type = self.t_to_llvm_type(&cast.target_type);
+                let target_type_str = cast.target_type.to_string();
 
                 match expr_val {
                     BasicValueEnum::IntValue(int_val) => {
@@ -573,11 +634,11 @@ impl<'ctx> IRGenerator<'ctx> {
                 None
             }
             Node::FunctionDefinition(fd) => {
-                let return_type = self.str_to_llvm_type(&fd.return_type);
+                let return_type = self.t_to_llvm_type(&fd.return_type);
                 let param_types: Vec<BasicMetadataTypeEnum> = fd
                     .params
                     .iter()
-                    .map(|param| self.str_to_llvm_type(&param.1).into())
+                    .map(|param| self.t_to_llvm_type(&param.1).into())
                     .collect();
 
                 let fn_type = return_type.fn_type(&param_types, false);
@@ -600,7 +661,7 @@ impl<'ctx> IRGenerator<'ctx> {
                         .unwrap();
                     self.builder.build_store(alloc, param).unwrap();
 
-                    let llvm_type = self.str_to_llvm_type(ty);
+                    let llvm_type = self.t_to_llvm_type(ty);
 
                     self.variables.last_mut().unwrap().insert(
                         name.clone(),
@@ -772,7 +833,8 @@ impl<'ctx> IRGenerator<'ctx> {
                 }
             }
             Node::VarDeclaration(vdecl) => {
-                let var_type = self.str_to_llvm_type(&vdecl.var_type);
+                let inferred_ty = self.type_table.get(&vdecl.id.unwrap()).unwrap().clone();
+                let var_type = self.t_to_llvm_type(&inferred_ty);
                 let init_val = self
                     .generate_ir_for_expr(&vdecl.var_value)
                     .unwrap_or_else(|| var_type.const_zero());
