@@ -1,0 +1,4 @@
+bind x as i32 = 5
+bind y as i8 = 6
+bind z as i32 = 5 + 6@i32
+print(z) 

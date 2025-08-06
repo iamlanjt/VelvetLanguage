@@ -1,0 +1,4 @@
+// Simple string test
+bind message as string = "Hello World"
+print(message)
+print("Direct string") 

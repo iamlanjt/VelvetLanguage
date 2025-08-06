@@ -1,0 +1,42 @@
+// Test missing features
+
+// Basic features (should work)
+bind x as i32 = 5
+bind y as i8 = 6
+print(x + y)
+
+// Test control flow (should be missing)
+if x > 3 {
+    print("x is greater than 3")
+} else {
+    print("x is not greater than 3")
+}
+
+// Test while loop (should be missing)
+while x > 0 {
+    print(x)
+    x = x - 1
+}
+
+// Test function declaration (should be missing)
+-> add(a as i32, b as i32) => i32 {
+    return a + b
+}
+
+// Test function call
+bind result as i32 = add(x, y)
+print(result)
+
+// Test arrays (should be missing)
+bind arr as array = [1, 2, 3, 4, 5]
+print(arr[0])
+
+// Test logical operators (should be missing)
+bind flag as bool = true
+if flag && x > 0 {
+    print("Both conditions are true")
+}
+
+// Test nullish coalescing (should be missing)
+bind value as i32 = x ! 42
+print(value) 

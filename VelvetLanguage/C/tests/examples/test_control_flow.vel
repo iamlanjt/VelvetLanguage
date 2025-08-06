@@ -1,0 +1,15 @@
+// Test control flow features
+bind x as i32 = 5
+
+// Test if statement
+if x > 3 {
+    print("x is greater than 3")
+} else {
+    print("x is not greater than 3")
+}
+
+// Test while loop
+while x > 0 {
+    print(x)
+    x = x - 1
+} 

@@ -19,8 +19,8 @@ use crate::{
 };
 
 // TODO ideally move these constants to compiler flags;
-//      at the time of writing, both commnts and the compiler are undergoing very complex canges,
-//      so this will work for development, but should be altered once out of a beta state.
+//      at the time of writing, both comments and the compiler are undergoing very complex changes,
+//      so this will work for development, but should be altered once its out of beta state.
 const CF_DEBUG_MODE: bool = false;
 
 #[derive(Clone)]
@@ -1363,6 +1363,7 @@ impl<'ctx> IRGenerator<'ctx> {
 
                 Some(phi.as_basic_value())
             }
+
             _ => unimplemented!("No compiler value yet: {:#?}", node),
         }
     }

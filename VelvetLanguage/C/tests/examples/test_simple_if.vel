@@ -1,0 +1,5 @@
+// Simple if test
+bind x as i32 = 5
+if x > 3 {
+    print("x is greater than 3")
+} 

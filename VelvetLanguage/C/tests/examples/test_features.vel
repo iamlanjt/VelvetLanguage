@@ -1,0 +1,22 @@
+// Test all implemented features
+bind x as i32 = 5
+bind y as i8 = 6
+bind z as i32 = 5 + 6@i32
+print(z)
+
+// Test Vex-style syntax in Vel
+bind a := 10
+bind b: int = 20
+print(a + b)
+
+// Test type casting
+bind result as i32 = a + b@i32
+print(result)
+
+// Test basic arithmetic
+bind sum as i32 = x + y
+bind diff as i32 = x - y
+bind prod as i32 = x * y
+print(sum)
+print(diff)
+print(prod) 

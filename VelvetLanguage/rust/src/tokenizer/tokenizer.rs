@@ -296,6 +296,8 @@ pub fn tokenize(
             continue;
         }
 
+
+
         if current_char == '\'' || current_char == '"' {
             let end_quote_char = current_char;
             let mut end_string = "".to_owned();

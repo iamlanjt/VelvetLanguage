@@ -1,0 +1,8 @@
+bind x as int = 5
+bind y as int = 10
+bind result as int = x + y
+print(x)
+print(y)
+print(result)
+print(x * y)
+print(y - x) 

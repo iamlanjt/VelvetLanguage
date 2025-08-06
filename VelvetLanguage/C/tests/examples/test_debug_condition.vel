@@ -1,0 +1,4 @@
+// Debug condition evaluation
+bind x as i32 = 5
+bind condition as bool = x > 3
+print(condition) 

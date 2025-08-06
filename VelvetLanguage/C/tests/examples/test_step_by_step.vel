@@ -1,0 +1,4 @@
+bind x as i32 = 5
+print(x)
+bind y as i8 = 6
+print(y) 

@@ -1,0 +1,5 @@
+bind x := 42
+bind y: int = 13
+print(x)
+print(y)
+print(x + y) 

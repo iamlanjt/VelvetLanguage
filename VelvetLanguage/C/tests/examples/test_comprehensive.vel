@@ -1,0 +1,11 @@
+bind x as i32 = 5
+bind y as i8 = 6
+bind z as i32 = 5 + 6@i32
+print(z)
+
+bind a := 10
+bind b: int = 20
+print(a + b)
+
+bind result as i32 = a + b@i32
+print(result) 

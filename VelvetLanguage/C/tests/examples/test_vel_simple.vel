@@ -1,0 +1,2 @@
+bind x as int = 5@i32
+print(x) 

@@ -1,0 +1,7 @@
+// Debug if statement
+bind x as i32 = 5
+print("Before if")
+if x > 3 {
+    print("Inside if block")
+}
+print("After if") 

@@ -60,7 +60,7 @@ pub enum VelvetTokenType {
     NoOp,
 }
 
-const VTOK_EQUIV: [&str; 41] = [
+const VTOK_EQUIV: [&str; 45] = [
     "Plus",
     "Minus",
     "Asterisk",
@@ -102,6 +102,7 @@ const VTOK_EQUIV: [&str; 41] = [
     "DollarSign",
     "At",
     "NoOp",
+
 ];
 
 impl fmt::Display for VelvetTokenType {
@@ -164,6 +165,9 @@ impl TryFrom<u8> for VelvetTokenType {
             36 => Ok(Keywrd_Match),
             37 => Ok(QuestionMark),
             38 => Ok(DollarSign),
+            39 => Ok(At),
+            40 => Ok(NoOp),
+
             _ => Err(TryFromPrimitiveError { value }),
         }
     }

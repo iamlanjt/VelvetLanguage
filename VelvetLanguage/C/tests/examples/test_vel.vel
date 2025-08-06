@@ -1,0 +1,5 @@
+bind inferred as any = 2147483647@i64 + 1
+print(inferred)
+bind x as int = 5@i32
+bind y as int = 10@i32
+print(x + y) 
