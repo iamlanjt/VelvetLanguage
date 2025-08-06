@@ -1,0 +1,16 @@
+name = "io"
+desc = "Various functions pertaining to input/output"
+
+[[submod]]
+name = "rs_print"
+desc = "Print arguments to the standard output without a newline"
+args = [
+    { name = "arg", type = "wc" } 
+]
+
+[[submod]]
+name = "rs_println"
+desc = "Print arguments to the standard output with a newline"
+args = [
+    { name = "arg", type = "wc" }
+]

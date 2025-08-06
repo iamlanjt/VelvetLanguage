@@ -1,2 +1,3 @@
-bind inferred as any = 2147483647@i64 + 1
-print(inferred)
+ext "@/io"
+
+rs_println("e")

@@ -7,3 +7,5 @@ edition = "2024"
 rand = "0.9.1"
 colored = "2"
 inkwell = { version = "0.6.0", features = ["llvm17-0"] }
+toml = "0.9.5"
+serde = { version = "1.0.219", features = ["derive"] }

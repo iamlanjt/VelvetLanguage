@@ -122,6 +122,8 @@ pub fn tokenize(
         ("for", VelvetTokenType::Keywrd_For),
         ("of", VelvetTokenType::Keywrd_Of),
         ("match", VelvetTokenType::Keywrd_Match),
+        ("extern", VelvetTokenType::Keywrd_External),
+        ("ext", VelvetTokenType::Keywrd_External),
     ]);
 
     while tokenizer_index < input_characters.len() {

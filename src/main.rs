@@ -113,6 +113,8 @@ fn main() {
 
     let compile_ir = args.iter().any(|p| *p.to_lowercase() == *"compile");
 
+    let tc_verbose = args.iter().any(|p| *p.to_lowercase() == *"tc-verbose");
+
     let do_coerce = args.iter().any(|p| *p.to_lowercase() == *"cmp-do-coerce");
 
     let contents = fs::read_to_string(&file_path)
@@ -129,12 +131,25 @@ fn main() {
     );
     let ast = parser.produce_ast();
     // println!("{:#?}", ast);
-    let mut checker = TypeChecker::new();
+    let mut checker = TypeChecker::new(
+        &ast.externals_used,
+        std::env::current_dir()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string(),
+    );
     checker.enter_scope();
-    for node in &ast {
-        checker.check_expr(node, None);
+    checker.load_externs();
+    if tc_verbose {
+        println!(
+            "┌ {}",
+            String::from("Start Typechecker Output").on_yellow().bold()
+        );
     }
-
+    for node in &ast.nodes {
+        checker.check_expr(node, None, tc_verbose, 0);
+    }
     // println!("{:#?}", checker.type_table);
     if !checker.errors.is_empty() {
         println!("Typechecking failed");
@@ -155,7 +170,24 @@ fn main() {
         let file_name = args.get(1).unwrap();
         let context = inkwell::context::Context::create();
 
-        let compile_time_checker = TypeChecker::new();
+        if !fs::exists("./velvet_tmp").unwrap() {
+            fs::create_dir("./velvet_tmp").expect("Failed to create temporary Velvet directory.");
+            println!("write_dir -> velvet_tmp");
+        }
+        if !fs::exists("./velvet_tmp/std").unwrap() {
+            fs::create_dir("./velvet_tmp/std")
+                .expect("Failed to create standard lib container in temporary Velvet directory.");
+            println!("write_dir -> velet_tmp/std");
+        }
+
+        let compile_time_checker = TypeChecker::new(
+            &ast.externals_used,
+            std::env::current_dir()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string(),
+        );
 
         println!(
             "[typecheck] inferred reference table size: {} element(s)",
@@ -167,21 +199,17 @@ fn main() {
             do_coerce,
             compile_time_checker,
             checker.type_table,
+            &ast.externals_used,
         );
         let start = Instant::now();
         println!("Compiling `{}`...", file_name);
 
-        let result = generator.generate_ir_for_nodes(ast);
+        let result = generator.generate_ir_for_nodes(ast.nodes);
         if !result {
             process::exit(1);
         }
         let finish_irgen = start.elapsed();
         let finished_irgen_t = Instant::now();
-
-        if !fs::exists("./velvet_tmp").unwrap() {
-            fs::create_dir("./velvet_tmp").expect("Failed to create temporary Velvet directory.");
-            println!("write_dir -> velvet_tmp");
-        }
 
         // let mut rng = rand::rng();
         let name = format!("velvet_raw_{}", "IR"); //rng.random_range(481..194801));
@@ -196,7 +224,6 @@ fn main() {
         let finished_codegen_t = Instant::now();
 
         println!("write -> velvet_tmp/{}-unop.ll", name);
-
         let output = Command::new("opt")
             .args([
                 "-O3",
@@ -222,7 +249,40 @@ fn main() {
         // generator.module.print_to_stderr();
 
         // generator.emit_object_file("./velvet_tmp/ir.o");
-        let output = Command::new("clang").args([format!("./velvet_tmp/{}-op.ll", name).as_str(), "-o", "out"]).output().expect("Failed to link your Velvet program! You may have to manually link the object file under `./velvet_tmp`.");
+        let optimized_path = format!("./velvet_tmp/{}-op.ll", name);
+
+        let mut external_archive_paths = vec![];
+        for external in &generator.external_files {
+            println!(
+                "pushing archive velvet_tmp/std/lib{}.a to linker...",
+                external
+            );
+            let archive_path = format!("velvet_tmp/std/lib{}.a", external);
+            if fs::metadata(&archive_path).is_ok() {
+                external_archive_paths.push(archive_path);
+            } else {
+                eprintln!(
+                    "Missing expected staticlib archive for external: {}",
+                    archive_path
+                );
+                process::exit(1);
+            }
+        }
+
+        let mut clang_cmd = Command::new("clang");
+        clang_cmd.arg(&optimized_path);
+        for archive in &external_archive_paths {
+            clang_cmd.arg(archive);
+        }
+
+        clang_cmd.args(["-lc++", "-lc", "-lSystem"]);
+
+        clang_cmd.arg("-o").arg("out");
+
+        let output = clang_cmd
+    .output()
+    .expect("Failed to link your Velvet program! You may have to manually link the object file under `./velvet_tmp`.");
+
         let finish_linking = finished_optimizer_t.elapsed();
 
         if !output.status.success() {
@@ -230,6 +290,8 @@ fn main() {
             std::process::exit(1);
         }
 
+        fs::remove_dir_all("./velvet_tmp/std")
+            .expect("Failed to remove temporary standard lib Velvet dir at `./velvet_tmp/std`.");
         // fs::remove_dir_all("./velvet_tmp").expect("Failed to remove temporary Velvet directory. You may have to manually remove it at `./velvet_tmp`.");
 
         let final_time = start.elapsed();
@@ -329,12 +391,12 @@ fn main() {
 
     if args.iter().any(|p| *p.to_lowercase() == *"do_dump_ast") {
         println!("[AST Dump]");
-        for inner_node in &ast {
+        for inner_node in &ast.nodes {
             print_node(inner_node, 0);
         }
     }
 
-    let mut interp = Interpreter::new(ast);
+    let mut interp = Interpreter::new(ast.nodes);
     interp.evaluate_body(SourceEnv::create_global(is_sandboxed));
 }
 

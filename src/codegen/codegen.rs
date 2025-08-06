@@ -1,4 +1,8 @@
-use std::{collections::HashMap, process};
+use std::{
+    collections::HashMap,
+    env, fs,
+    process::{self, Command},
+};
 
 use colored::Colorize;
 use inkwell::{
@@ -15,7 +19,7 @@ use inkwell::{
 
 use crate::{
     parser::nodetypes::Node,
-    typecheck::typecheck::{T, TypeChecker},
+    typecheck::typecheck::{SubmoduleFetchResult, T, TypeChecker, try_fetch_submodule},
 };
 
 // TODO ideally move these constants to compiler flags;
@@ -59,6 +63,9 @@ pub struct IRGenerator<'ctx> {
     format_str_int: Option<PointerValue<'ctx>>,
     format_str_str: Option<PointerValue<'ctx>>,
     coerce_types: bool,
+    externals: Vec<String>,
+    external_names_individual: Vec<String>,
+    pub external_files: Vec<String>,
 
     // call stack stuff
     call_stack: Option<GlobalValue<'ctx>>,
@@ -102,6 +109,7 @@ impl<'ctx> IRGenerator<'ctx> {
         coerce_types: bool,
         checker: TypeChecker,
         type_table: HashMap<usize, T>,
+        externals: &Vec<String>,
     ) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
@@ -121,6 +129,9 @@ impl<'ctx> IRGenerator<'ctx> {
             error_stack: Vec::new(),
             warning_stack: Vec::new(),
             scope_stack: Vec::new(),
+            externals: externals.clone(),
+            external_names_individual: Vec::new(),
+            external_files: Vec::new(),
         }
     }
 
@@ -334,6 +345,27 @@ impl<'ctx> IRGenerator<'ctx> {
         }
     }
 
+    fn get_or_declare_external(
+        &mut self,
+        external: String,
+    ) -> inkwell::values::FunctionValue<'ctx> {
+        if let Some(func) = self.module.get_function(&external) {
+            func
+        } else {
+            let i8ptr_type = self.context.ptr_type(AddressSpace::default());
+            let fn_type = self.context.i64_type().fn_type(&[i8ptr_type.into()], false);
+            self.checker.scopes.last_mut().unwrap().insert(
+                external.clone(),
+                T::Function {
+                    params: Vec::new(),
+                    return_type: Box::new(T::Void),
+                },
+            );
+            self.module
+                .add_function(&external.clone(), fn_type, Some(Linkage::External))
+        }
+    }
+
     pub fn coerce_ints_to_common_type(
         &mut self,
         left: IntValue<'ctx>,
@@ -417,13 +449,20 @@ impl<'ctx> IRGenerator<'ctx> {
             T::Integer16 => self.context.i16_type().into(),
             T::Integer32 => self.context.i32_type().into(),
             T::Integer64 => self.context.i64_type().into(),
+            T::Integer128 => self.context.i128_type().into(),
             T::Boolean => self.context.bool_type().into(),
             T::String => self.context.ptr_type(AddressSpace::default()).into(),
-            T::Any => {
+            T::Array {
+                array_t,
+                is_stack_alloca,
+                becomes_heap_at,
+                element_count,
+            } => self.context.ptr_type(AddressSpace::default()).into(),
+            T::Infer => {
                 // All `any` types should be resolved (either inferred to a basic type, or errored due to a lack of context)
                 // before the code-gen phase
                 // if one makes it through, there is a fundemental logic error in the typechecker
-                self.compiler_error("Typechecker logic failure; an `any` type has been passed down to code generation.\n-> help: This should be considered a bug in Velvet; as a temporary fix, you can stop using `any`.", true);
+                self.compiler_error("Typechecker logic failure; an `inferred` type has been passed down to code generation.\n-> help: This should be considered a bug in Velvet; as a temporary fix, you can stop using `inferred`.", true);
                 panic!();
             }
             _ => {
@@ -469,6 +508,45 @@ impl<'ctx> IRGenerator<'ctx> {
         // Main entry function, start proeducing LLVM IR
         // vvvvvvvvvvvvvvvvvvv
         self.enter_scope();
+
+        // include all externs
+        for ext in &self.externals.clone() {
+            let bound = try_fetch_submodule(ext, std::env::current_dir().unwrap().as_path())
+                .unwrap_or_else(|_| panic!("Failed to include ext {}", ext));
+            match bound {
+                SubmoduleFetchResult::Valid { meta, entry } => {
+                    for sub_module in &meta.submod {
+                        self.external_names_individual.push(sub_module.name.clone());
+                        self.external_files.push(sub_module.name.clone());
+                        self.get_or_declare_external(sub_module.name.clone());
+
+                        // compile Rust file to staticlib (.a)
+                        let output_archive_path =
+                            format!("velvet_tmp/std/lib{}.a", sub_module.name);
+                        let status = Command::new("rustc")
+                            .arg("--crate-type=staticlib")
+                            .arg(entry.to_str().unwrap())
+                            .arg("-o")
+                            .arg(&output_archive_path)
+                            .status()
+                            .expect("Failed to compile Rust external to staticlib");
+
+                        if !status.success() {
+                            panic!(
+                                "rustc failed to compile external function: {}",
+                                sub_module.name
+                            );
+                        }
+
+                        println!("write -> {}", output_archive_path);
+                    }
+                }
+                SubmoduleFetchResult::Invalid => {
+                    panic!("Failed to parse external inclusion path {}", ext);
+                }
+            }
+        }
+
         let i64_type = self.context.i32_type();
         let fn_type = i64_type.fn_type(&[], false);
         let function = self.module.add_function("main", fn_type, None);
@@ -529,12 +607,9 @@ impl<'ctx> IRGenerator<'ctx> {
             ),
             Node::NumericLiteral(n) => {
                 let inferred_ty = self.type_table.get(&n.id.unwrap()).unwrap().clone();
-                let number_size = self
-                    .checker
-                    .check_expr(&Node::NumericLiteral(n.clone()), None);
 
                 let parsed_val = n.literal_value.parse::<u64>().unwrap();
-                let base_type = self.t_to_llvm_type(&number_size);
+                let base_type = self.t_to_llvm_type(&inferred_ty);
                 Some(
                     base_type
                         .into_int_type()
@@ -548,6 +623,32 @@ impl<'ctx> IRGenerator<'ctx> {
                     .const_int(if b.literal_value { 1 } else { 0 }, false)
                     .into(),
             ),
+            Node::MemberExpr(mem) => {
+                let array_ptr = self
+                    .generate_ir_for_expr(&mem.object)
+                    .unwrap()
+                    .into_pointer_value();
+                let index_val = self
+                    .generate_ir_for_expr(&mem.property)
+                    .unwrap()
+                    .into_int_value();
+
+                let ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            self.context.i32_type().array_type(3),
+                            array_ptr,
+                            &[self.context.i32_type().const_int(0, false), index_val],
+                            "elem_ptr",
+                        )
+                        .unwrap()
+                };
+
+                self.builder
+                    .build_load(self.context.i32_type(), ptr, "elem_val")
+                    .unwrap()
+                    .into()
+            }
             Node::IfStmt(ifs) => {
                 let parent_func = self
                     .builder
@@ -1044,16 +1145,24 @@ impl<'ctx> IRGenerator<'ctx> {
                 if let Some(func) = function {
                     let mut has_valid_return = false;
 
-                    for bb in func.get_basic_blocks() {
-                        if let Some(term) = bb.get_terminator() {
-                            if term.get_opcode() == InstructionOpcode::Return {
-                                if let Some(ret_val) = ret_has_value(term) {
-                                    if !is_undef(ret_val) {
-                                        has_valid_return = true;
+                    if !self
+                        .external_names_individual
+                        .iter()
+                        .any(|elem| elem == &function_name)
+                    {
+                        for bb in func.get_basic_blocks() {
+                            if let Some(term) = bb.get_terminator() {
+                                if term.get_opcode() == InstructionOpcode::Return {
+                                    if let Some(ret_val) = ret_has_value(term) {
+                                        if !is_undef(ret_val) {
+                                            has_valid_return = true;
+                                        }
                                     }
                                 }
                             }
                         }
+                    } else {
+                        has_valid_return = true;
                     }
 
                     if !has_valid_return {
@@ -1101,54 +1210,35 @@ impl<'ctx> IRGenerator<'ctx> {
 
                     call_site.try_as_basic_value().left()
                 } else {
-                    match function_name.as_str() {
-                        "print" => {
-                            let val = self
-                                .generate_ir_for_expr(&cexpr.args[0])
-                                .unwrap_or(self.context.i64_type().const_zero().into());
-                            let print_fn = self.get_or_declare_printf();
-
-                            let format_str = match val {
-                                BasicValueEnum::IntValue(_) => self.format_str_int.unwrap(),
-                                BasicValueEnum::PointerValue(_) => self.format_str_str.unwrap(),
-                                _ => panic!("Unsupported type for print"),
-                            };
+                    let m: Option<i32> = match function_name.as_str() {
+                        _ => None,
+                    };
+                    if m.is_none() {
+                        // Try to call from externals
+                        println!("{:#?}", self.external_names_individual);
+                        if self
+                            .external_names_individual
+                            .iter()
+                            .any(|p| *p.to_lowercase() == function_name)
+                        {
+                            // Register external call in LLVM IR
+                            let this_fn = self.get_or_declare_external(function_name.clone());
+                            let args: Vec<_> = cexpr
+                                .args
+                                .iter()
+                                .map(|arg| self.generate_ir_for_expr(arg).unwrap().into())
+                                .collect();
 
                             self.builder
-                                .build_call(print_fn, &[format_str.into(), val.into()], "printcall")
+                                .build_call(this_fn, &args, "external_call")
                                 .unwrap();
 
-                            // Pop call stack
-                            if CF_DEBUG_MODE {
-                                let csp =
-                                    self.call_stack_ptr.expect("CSP not initialized correctly");
-
-                                let curr_ptr_val = self
-                                    .builder
-                                    .build_load(
-                                        self.context.i32_type(),
-                                        csp.as_pointer_value(),
-                                        "stack_ptr",
-                                    )
-                                    .unwrap()
-                                    .into_int_value();
-                                let new_ptr_val = self
-                                    .builder
-                                    .build_int_sub(
-                                        curr_ptr_val,
-                                        self.context.i32_type().const_int(1, false),
-                                        "stack_ptr_dec",
-                                    )
-                                    .unwrap();
-                                self.builder
-                                    .build_store(csp.as_pointer_value(), new_ptr_val)
-                                    .unwrap();
-                            }
-
-                            None
-                            // self.context.i32_type().const_int(0, false).into()
+                            return None;
                         }
-                        _ => panic!("Unknown function '{}'", function_name),
+
+                        panic!("No function available: {}", function_name);
+                    } else {
+                        None
                     }
                 }
             }
@@ -1178,7 +1268,7 @@ impl<'ctx> IRGenerator<'ctx> {
                     .build_conditional_branch(condition.into_int_value(), body_block, end_block)
                     .unwrap();
 
-                self.builder.position_at_end(body_block); // <- FIXED
+                self.builder.position_at_end(body_block);
 
                 self.enter_scope();
                 for stmt in &ws.body {
@@ -1187,6 +1277,8 @@ impl<'ctx> IRGenerator<'ctx> {
                 self.exit_scope();
 
                 self.builder.build_unconditional_branch(cond_block).unwrap();
+
+                // self.builder.build_unconditional_branch(end_block).unwrap();
 
                 self.builder.position_at_end(end_block);
 

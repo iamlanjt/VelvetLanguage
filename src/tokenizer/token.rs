@@ -58,9 +58,10 @@ pub enum VelvetTokenType {
     DollarSign,
     At,
     NoOp,
+    Keywrd_External,
 }
 
-const VTOK_EQUIV: [&str; 41] = [
+const VTOK_EQUIV: [&str; 42] = [
     "Plus",
     "Minus",
     "Asterisk",
@@ -102,6 +103,7 @@ const VTOK_EQUIV: [&str; 41] = [
     "DollarSign",
     "At",
     "NoOp",
+    "Keywrd:External",
 ];
 
 impl fmt::Display for VelvetTokenType {

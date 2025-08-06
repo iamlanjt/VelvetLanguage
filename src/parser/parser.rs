@@ -21,12 +21,28 @@ pub struct Parser {
     ast_snippets: Vec<AstSnippet>,
     etech: ExecutionTechnique,
     cur_node: usize,
+    externals: Vec<String>,
 }
 
 #[derive(Clone, PartialEq)]
 pub enum ExecutionTechnique {
     Interpretation,
     Compilation,
+}
+
+#[derive(Clone, Debug)]
+pub struct Ast {
+    pub nodes: Vec<Node>,
+    pub externals_used: Vec<String>,
+}
+
+impl Ast {
+    pub fn new(nodes: Vec<Node>, externals_used: Vec<String>) -> Self {
+        Self {
+            nodes,
+            externals_used,
+        }
+    }
 }
 
 impl Parser {
@@ -39,6 +55,7 @@ impl Parser {
             ast_snippets: Vec::new(),
             etech,
             cur_node: 0,
+            externals: Vec::new(),
         }
     }
 
@@ -65,6 +82,15 @@ impl Parser {
     }
 
     fn identifier_to_type(&self, ident: &str) -> T {
+        if let Some(base_type) = ident.strip_suffix("[]") {
+            let inner = self.identifier_to_type(base_type);
+            return T::Array {
+                array_t: Box::new(inner),
+                is_stack_alloca: true,
+                becomes_heap_at: 0,
+                element_count: 0,
+            };
+        }
         match ident.to_lowercase().as_str() {
             "i8" => T::Integer8,
             "i16" => T::Integer16,
@@ -73,7 +99,7 @@ impl Parser {
             "i128" => T::Integer128,
             "bool" => T::Boolean,
             "string" => T::String,
-            "any" => T::Any,
+            "inferred" => T::Infer,
             _ => panic!("`{}` is not a valid type", ident),
         }
     }
@@ -94,7 +120,15 @@ impl Parser {
         tkn
     }
 
-    pub fn produce_ast(&mut self) -> Vec<Node> {
+    pub fn peek(&self) -> Option<VelvetToken> {
+        if self.at_end() {
+            None
+        } else {
+            Some(self.tokens[self.token_pointer].clone())
+        }
+    }
+
+    pub fn produce_ast(&mut self) -> Ast {
         let mut program: Vec<Node> = Vec::new();
         loop {
             if self.at_end() {
@@ -111,13 +145,14 @@ impl Parser {
             _ => true,
         });
 
-        program
+        Ast::new(program, self.externals.clone())
     }
 
     pub fn parse_stmt(&mut self) -> Box<Node> {
         match self.current().kind {
             VelvetTokenType::Keywrd_Bind => self.parse_var_declaration(),
             VelvetTokenType::Keywrd_Bindmutable => self.parse_var_declaration(),
+            VelvetTokenType::Keywrd_External => self.parse_external_include(),
             VelvetTokenType::Arrow => self.parse_fn_declaration(),
             VelvetTokenType::Semicolon => self.parse_return_statement(),
             VelvetTokenType::DollarSign => self.parse_interpreter_block(),
@@ -129,6 +164,15 @@ impl Parser {
             }
             _ => self.parse_expr(),
         }
+    }
+
+    pub fn parse_external_include(&mut self) -> Box<Node> {
+        self.eat(); // eat `external` ident
+        let extern_str = self.expect_token(VelvetTokenType::Str, "Expected external string");
+        self.externals.push(extern_str.literal_value);
+        Box::new(Node::NoOpNode(NoOpNode {
+            id: Some(self.alloc_node_id()),
+        }))
     }
 
     pub fn parse_type_cast(&mut self, left: Box<Node>, right: T) -> Box<Node> {
@@ -297,8 +341,8 @@ impl Parser {
             VelvetTokenType::Keywrd_As,
             "Function parameters must be explicitly typed",
         );
-        let arg_type = self.expect_token(VelvetTokenType::Identifier, "Expected type identifier");
-        args.push((first_arg, self.identifier_to_type(&arg_type.literal_value)));
+        let arg_type = self.parse_type();
+        args.push((first_arg, arg_type));
 
         while !self.at_end() && self.current().kind == VelvetTokenType::Comma {
             self.eat();
@@ -308,9 +352,8 @@ impl Parser {
                 "Function parameters must be explicitly typed",
             );
 
-            let arg_type =
-                self.expect_token(VelvetTokenType::Identifier, "Expected type identifier");
-            args.push((next_arg, self.identifier_to_type(&arg_type.literal_value)));
+            let arg_type = self.parse_type();
+            args.push((next_arg, arg_type));
         }
 
         args
@@ -482,10 +525,7 @@ impl Parser {
             "Explicit typing when defining a var is required. [bind example as bool = true]",
         );
 
-        let var_type_str = &self
-            .expect_token(VelvetTokenType::Identifier, "Expected type")
-            .literal_value;
-        let var_type = self.identifier_to_type(var_type_str);
+        let var_type = self.parse_type();
 
         self.expect_token(VelvetTokenType::Eq, "");
 
@@ -634,24 +674,24 @@ impl Parser {
     ) -> Box<Node> {
         match node.as_ref() {
             Node::Identifier(Identifier {
-                id: None,
+                id: Some(id),
                 identifier_name,
             }) => {
                 if let Some(replacement) = bindings.get(identifier_name) {
                     return replacement.clone();
                 }
                 Box::new(Node::Identifier(Identifier {
-                    id: None,
+                    id: Some(*id),
                     identifier_name: identifier_name.clone(),
                 }))
             }
 
             Node::CallExpr(CallExpr {
-                id: None,
+                id: Some(id),
                 caller,
                 args,
             }) => Box::new(Node::CallExpr(CallExpr {
-                id: None,
+                id: Some(*id),
                 caller: Self::substitute_snippet_vars(caller, bindings),
                 args: args
                     .iter()
@@ -660,51 +700,51 @@ impl Parser {
             })),
 
             Node::BinaryExpr(BinaryExpr {
-                id: None,
+                id: Some(id),
                 left,
                 right,
                 op,
             }) => Box::new(Node::BinaryExpr(BinaryExpr {
-                id: None,
+                id: Some(*id),
                 left: Self::substitute_snippet_vars(left, bindings),
                 right: Self::substitute_snippet_vars(right, bindings),
                 op: op.clone(),
             })),
 
             Node::NullishCoalescing(NullishCoalescing {
-                id: None,
+                id: Some(id),
                 left,
                 right,
             }) => Box::new(Node::NullishCoalescing(NullishCoalescing {
-                id: None,
+                id: Some(*id),
                 left: Self::substitute_snippet_vars(left, bindings),
                 right: Self::substitute_snippet_vars(right, bindings),
             })),
 
             Node::Return(Return {
-                id: None,
+                id: Some(id),
                 return_statement,
             }) => Box::new(Node::Return(Return {
-                id: None,
+                id: Some(*id),
                 return_statement: Self::substitute_snippet_vars(return_statement, bindings),
             })),
 
             Node::VarDeclaration(VarDeclaration {
-                id: None,
+                id: Some(id),
                 is_mutable,
                 var_identifier,
                 var_type,
                 var_value,
             }) => Box::new(Node::VarDeclaration(VarDeclaration {
-                id: None,
+                id: Some(*id),
                 is_mutable: *is_mutable,
                 var_identifier: var_identifier.clone(),
                 var_type: var_type.clone(),
                 var_value: Self::substitute_snippet_vars(var_value, bindings),
             })),
 
-            Node::Block(Block { id: None, body }) => Box::new(Node::Block(Block {
-                id: None,
+            Node::Block(Block { id: Some(id), body }) => Box::new(Node::Block(Block {
+                id: Some(*id),
                 body: body
                     .iter()
                     .map(|stmt| *Self::substitute_snippet_vars(&Box::new(stmt.clone()), bindings))
@@ -712,11 +752,11 @@ impl Parser {
             })),
 
             Node::IfStmt(IfStmt {
-                id: None,
+                id: Some(id),
                 condition,
                 body,
             }) => Box::new(Node::IfStmt(IfStmt {
-                id: None,
+                id: Some(*id),
                 condition: Self::substitute_snippet_vars(condition, bindings),
                 body: body
                     .iter()
@@ -725,11 +765,11 @@ impl Parser {
             })),
 
             Node::WhileStmt(WhileStmt {
-                id: None,
+                id: Some(id),
                 condition,
                 body,
             }) => Box::new(Node::WhileStmt(WhileStmt {
-                id: None,
+                id: Some(*id),
                 condition: Self::substitute_snippet_vars(condition, bindings),
                 body: body
                     .iter()
@@ -738,7 +778,7 @@ impl Parser {
             })),
 
             Node::Iterator(Iterator {
-                id: None,
+                id: Some(id),
                 left,
                 right,
                 body,
@@ -749,7 +789,7 @@ impl Parser {
                     .map(|stmt| *Self::substitute_snippet_vars(&Box::new(stmt.clone()), bindings))
                     .collect();
                 Box::new(Node::Iterator(Iterator {
-                    id: None,
+                    id: Some(*id),
                     left: left.clone(), // assume left is a plain identifier token
                     right: new_right,
                     body: new_body,
@@ -757,11 +797,11 @@ impl Parser {
             }
 
             Node::MatchExpr(MatchExpr {
-                id: None,
+                id: Some(id),
                 target,
                 arms,
             }) => Box::new(Node::MatchExpr(MatchExpr {
-                id: None,
+                id: Some(*id),
                 target: Self::substitute_snippet_vars(target, bindings),
                 arms: arms
                     .iter()
@@ -775,48 +815,50 @@ impl Parser {
             })),
 
             Node::MemberExpr(MemberExpr {
-                id: None,
+                id: Some(id),
                 object,
                 property,
                 is_computed,
             }) => Box::new(Node::MemberExpr(MemberExpr {
-                id: None,
+                id: Some(*id),
                 object: Self::substitute_snippet_vars(object, bindings),
                 property: Self::substitute_snippet_vars(property, bindings),
                 is_computed: *is_computed,
             })),
 
-            Node::ListLiteral(ListLiteral { id: None, props }) => {
-                Box::new(Node::ListLiteral(ListLiteral {
-                    id: None,
-                    props: props
-                        .iter()
-                        .map(|p| *Self::substitute_snippet_vars(&Box::new(p.clone()), bindings))
-                        .collect(),
-                }))
-            }
+            Node::ListLiteral(ListLiteral {
+                id: Some(id),
+                props,
+            }) => Box::new(Node::ListLiteral(ListLiteral {
+                id: Some(*id),
+                props: props
+                    .iter()
+                    .map(|p| *Self::substitute_snippet_vars(&Box::new(p.clone()), bindings))
+                    .collect(),
+            })),
 
-            Node::ObjectLiteral(ObjectLiteral { id: None, props }) => {
-                Box::new(Node::ObjectLiteral(ObjectLiteral {
-                    id: None,
-                    props: props
-                        .iter()
-                        .map(|(k, v)| {
-                            (
-                                k.clone(),
-                                *Self::substitute_snippet_vars(&Box::new(v.clone()), bindings),
-                            )
-                        })
-                        .collect(),
-                }))
-            }
+            Node::ObjectLiteral(ObjectLiteral {
+                id: Some(id),
+                props,
+            }) => Box::new(Node::ObjectLiteral(ObjectLiteral {
+                id: Some(*id),
+                props: props
+                    .iter()
+                    .map(|(k, v)| {
+                        (
+                            k.clone(),
+                            *Self::substitute_snippet_vars(&Box::new(v.clone()), bindings),
+                        )
+                    })
+                    .collect(),
+            })),
             Node::Comparator(Comparator {
-                id: None,
+                id: Some(id),
                 lhs,
                 rhs,
                 op,
             }) => Box::new(Node::Comparator(Comparator {
-                id: None,
+                id: Some(*id),
                 lhs: Self::substitute_snippet_vars(lhs, bindings),
                 rhs: Self::substitute_snippet_vars(rhs, bindings),
                 op: op.to_string(),
@@ -881,7 +923,7 @@ impl Parser {
 
     pub fn parse_call_expr(&mut self, caller: Box<Node>) -> Box<Node> {
         if let Node::Identifier(Identifier {
-            id: None,
+            id: Some(_),
             identifier_name,
         }) = caller.as_ref()
         {
@@ -1021,6 +1063,28 @@ impl Parser {
         }))
     }
 
+    pub fn parse_type(&mut self) -> T {
+        let ident = self
+            .expect_token(VelvetTokenType::Identifier, "Expected identifier")
+            .literal_value;
+
+        let mut ty = self.identifier_to_type(&ident);
+
+        let peeked = self.peek();
+        while peeked.is_some() && self.peek().unwrap().kind == VelvetTokenType::LBracket {
+            self.eat();
+            self.expect_token(VelvetTokenType::RBracket, "Expected close of array type");
+            ty = T::Array {
+                array_t: Box::new(ty),
+                is_stack_alloca: true,
+                becomes_heap_at: 0,
+                element_count: 0,
+            };
+        }
+
+        ty
+    }
+
     pub fn parse_primary_expr(&mut self) -> Box<Node> {
         // lowest level
         let tk = self.eat();
@@ -1061,7 +1125,9 @@ impl Parser {
             VelvetTokenType::Keywrd_For => self.parse_for_loop(),
             VelvetTokenType::WallArrow => {
                 self.parse_snippet_definition();
-                return Box::new(Node::NoOpNode(NoOpNode { id: None }));
+                return Box::new(Node::NoOpNode(NoOpNode {
+                    id: Some(self.alloc_node_id()),
+                }));
             }
             VelvetTokenType::Keywrd_Match => self.parse_match_expr(),
             _ => {
