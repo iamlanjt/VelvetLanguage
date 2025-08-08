@@ -2,15 +2,43 @@ name = "io"
 desc = "Various functions pertaining to input/output"
 
 [[submod]]
-name = "rs_print"
-desc = "Print arguments to the standard output without a newline"
-args = [
-    { name = "arg", type = "wc" } 
-]
-
-[[submod]]
-name = "rs_println"
-desc = "Print arguments to the standard output with a newline"
+name = "print"
+desc = """
+Prints a string argument to the standard output.
+"""
+errs = """
+Errors if writing to the stdout or flushing fails.
+"""
 args = [
     { name = "arg", type = "wc" }
 ]
+name_mirror = "vel_print"
+
+[[submod]]
+name = "write_nf"
+desc = """
+Similar to the `write` function, but does not flush the standard output.
+"""
+errs = """
+Errors if writing to the stdout fails.
+"""
+args = [
+    { name = "arg", type = "wc" }
+]
+name_mirror = "vel_write_no_flush"
+
+[[submod]]
+name = "write"
+desc = """
+Prints a string argument to the standard output.
+Similar to the `print` function, however this function prints without a newline.
+
+This method will automatically flush stdout when done processing. For behavior that does not flush, see `write_nf`.
+"""
+errs = """
+Errors if writing to the stdout or flushing fails. 
+"""
+args = [
+    { name = "arg", type = "wc" } 
+]
+name_mirror = "vel_write"

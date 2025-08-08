@@ -60,6 +60,9 @@ Join us below:
 
 https://discord.gg/ayEz2xag2s
 
+# Building documentation
+`cd docs && mkdocs build` -> `./docs/site`
+
 # Compiler Flags / Options
 Due to the beta status of the compiler, some features which are considered enabled by default on most compilers might be disabled by default in Velvet.
 

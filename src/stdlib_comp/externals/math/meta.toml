@@ -1,0 +1,14 @@
+name = "math"
+desc = "A collection of methods related to math"
+
+[[submod]]
+name = "pow"
+desc = """
+Returns the power of two numbers.
+"""
+args = [
+    { name = "x", type = "number" },
+    { name = "y", type = "number" }
+]
+name_mirror = "vel_m_pow"
+return_type = "number"

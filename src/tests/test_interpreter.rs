@@ -14,8 +14,12 @@ fn quick_setup(source: &str) -> Box<RuntimeVal> {
         runtime::{interpreter::Interpreter, source_environment::source_environment::SourceEnv},
     };
 
-    Interpreter::new(Parser::new(source, false, ExecutionTechnique::Interpretation).produce_ast())
-        .evaluate_body(SourceEnv::create_global(false))
+    Interpreter::new(
+        Parser::new(source, false, ExecutionTechnique::Interpretation)
+            .produce_ast()
+            .nodes,
+    )
+    .evaluate_body(SourceEnv::create_global(false))
 }
 
 /**
@@ -31,7 +35,8 @@ fn test_var_decl_immutable() {
             false,
             ExecutionTechnique::Interpretation,
         )
-        .produce_ast(),
+        .produce_ast()
+        .nodes,
     )
     .evaluate_body(Rc::clone(&env));
 
@@ -62,7 +67,8 @@ fn test_var_decl_mutable() {
             true,
             ExecutionTechnique::Interpretation,
         )
-        .produce_ast(),
+        .produce_ast()
+        .nodes,
     )
     .evaluate_body(Rc::clone(&env));
 
@@ -93,7 +99,8 @@ fn test_var_mutation() {
             false,
             ExecutionTechnique::Interpretation,
         )
-        .produce_ast(),
+        .produce_ast()
+        .nodes,
     )
     .evaluate_body(Rc::clone(&env));
 
@@ -125,7 +132,8 @@ fn test_var_mutation_on_immutable_env_var() {
             false,
             ExecutionTechnique::Interpretation,
         )
-        .produce_ast(),
+        .produce_ast()
+        .nodes,
     )
     .evaluate_body(Rc::clone(&env));
 }

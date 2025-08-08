@@ -118,7 +118,11 @@ pub struct MetaStdlibExternal {
 pub struct MetaSubmodule {
     pub name: String,
     pub desc: String,
+    pub errs: String,
     pub args: Vec<MetaSubmoduleArg>,
+    // vv Used for internal name mirroring
+    // i.e, `print` is actually `vel_print` UTH
+    pub name_mirror: Option<String>,
     pub return_type: Option<String>,
 }
 
@@ -273,6 +277,7 @@ impl TypeChecker {
             "bool" => T::Boolean,
             "string" => T::String,
             "inferred" => T::Infer,
+            "void" => T::Void,
             "wc" => T::ExternWildcard,
             _ => panic!("`{}` is not a valid type", ident),
         }
@@ -285,10 +290,10 @@ impl TypeChecker {
                 try_fetch_submodule(extern_path.as_str(), Path::new(&self.path_at)).unwrap();
 
             match parsed_path {
-                SubmoduleFetchResult::Valid { meta, entry } => {
+                SubmoduleFetchResult::Valid { meta, entry: _ } => {
                     for sub_module in &meta.submod {
                         // add this function to scope
-                        let v = String::from("inferred");
+                        let v = String::from("void");
                         let return_type_str = match &sub_module.return_type {
                             Some(rt) => rt,
                             None => &v,
@@ -379,6 +384,19 @@ impl TypeChecker {
             (_, ExternWildcard) => true,
 
             (a, b) => a == b,
+        }
+    }
+
+    // Check if all inferred types have been resolved
+    // If not, this method will push a tc error to prevent lowering Inferred types to the compiler
+    pub fn check_all_type_resolutions(&mut self) {
+        for entry in &self.type_table.clone() {
+            if matches!(entry.1, T::Infer) {
+                self.type_error(&format!(
+                    "Node {} requires type annotations; expected a constant type, got `inferred`",
+                    entry.0
+                ));
+            }
         }
     }
 

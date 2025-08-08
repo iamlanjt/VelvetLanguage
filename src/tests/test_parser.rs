@@ -9,12 +9,12 @@ fn parser_unit_node_binary_expr() {
     let ast = parser.produce_ast();
 
     assert_eq!(
-        ast.len(),
+        ast.nodes.len(),
         1,
         "BinaryExprs should be recursive; found multiple top-level nodes in one BinaryExpression unit test."
     );
 
-    match &ast[0] {
+    match &ast.nodes[0] {
         Node::BinaryExpr(top_expr) => {
             assert_eq!(
                 top_expr.op, "+",
@@ -76,8 +76,8 @@ fn parser_unit_node_while_stmt_comparator() {
     )
     .produce_ast();
 
-    assert_eq!(ast.len(), 1);
-    match &*ast.first().unwrap() {
+    assert_eq!(ast.nodes.len(), 1);
+    match &*ast.nodes.first().unwrap() {
         Node::WhileStmt(stmt) => match stmt.condition.as_ref() {
             Node::Comparator(comp) => {
                 match &*comp.lhs {
@@ -119,11 +119,11 @@ fn parser_unit_node_while_stmt_truthy() {
     .produce_ast();
 
     assert_eq!(
-        ast.len(),
+        ast.nodes.len(),
         1,
         "Expected AST size to be of 1 node for while statement"
     );
-    match &*ast.first().unwrap() {
+    match &*ast.nodes.first().unwrap() {
         Node::WhileStmt(w) => match &*w.condition {
             Node::Identifier(ident) => {
                 assert_eq!(
@@ -146,8 +146,8 @@ fn parser_unit_node_while_stmt_body() {
     )
     .produce_ast();
 
-    assert_eq!(ast.len(), 1);
-    match &*ast.first().unwrap() {
+    assert_eq!(ast.nodes.len(), 1);
+    match &*ast.nodes.first().unwrap() {
         Node::WhileStmt(w) => {
             assert_eq!(w.body.len(), 1);
             match w.body.first().unwrap() {
@@ -163,8 +163,8 @@ fn parser_unit_node_while_stmt_body() {
 fn parser_unit_node_string_literal() {
     let ast = Parser::new("'Hello World'", false, ExecutionTechnique::Interpretation).produce_ast();
 
-    assert_eq!(ast.len(), 1);
-    match &*ast.first().unwrap() {
+    assert_eq!(ast.nodes.len(), 1);
+    match &*ast.nodes.first().unwrap() {
         Node::StringLiteral(s) => {
             assert_eq!(
                 s.literal_value, "Hello World",
@@ -184,8 +184,8 @@ fn parser_unit_node_object_lieral() {
     )
     .produce_ast();
 
-    assert_eq!(ast.len(), 1);
-    match &*ast.first().unwrap() {
+    assert_eq!(ast.nodes.len(), 1);
+    match &*ast.nodes.first().unwrap() {
         Node::ObjectLiteral(obj) => {
             assert_eq!(obj.props.len(), 2);
             assert!(obj.props.contains_key("a"));
@@ -220,8 +220,8 @@ fn parser_unit_node_list_literal() {
     )
     .produce_ast();
 
-    assert_eq!(ast.len(), 1);
-    match &*ast.first().unwrap() {
+    assert_eq!(ast.nodes.len(), 1);
+    match &*ast.nodes.first().unwrap() {
         Node::ListLiteral(listlit) => {
             assert_eq!(listlit.props.len(), 3);
             match listlit.props.first().unwrap() {

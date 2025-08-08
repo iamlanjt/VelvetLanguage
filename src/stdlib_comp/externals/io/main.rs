@@ -1,12 +1,25 @@
+use std::ffi::CStr;
+use std::ffi::c_char;
 use std::io::{self, Write};
 
 #[no_mangle]
-pub extern "C" fn rs_print(a: *const u8) {
-    /*
+pub unsafe extern "C" fn vel_write(a: *const c_char) {
     if a.is_null() {
         return;
     }
+    print!("{}", CStr::from_ptr(a).to_str().unwrap());
+    std::io::stdout().flush().unwrap();
+}
 
+#[no_mangle]
+pub unsafe extern "C" fn vel_print(a: *const c_char) {
+    if a.is_null() {
+        return;
+    }
+    print!("{}", CStr::from_ptr(a).to_str().unwrap());
+    print!("{}", "\n");
+    std::io::stdout().flush().unwrap();
+    /*
     unsafe {
         let mut i = 0;
         loop {
@@ -14,15 +27,12 @@ pub extern "C" fn rs_print(a: *const u8) {
             if ch == 0 {
                 break;
             }
-            print!("{}", ch as char);
+            let c_str = unsafe { CStr::from_ptr(ch) };
+            print!("{}", ch);
             i += 1;
         }
-        io::stdout().flush().unwrap();
+        std::io::stdout().flush().unwrap();
+        println!("");
     }
     */
-}
-
-#[no_mangle]
-pub extern "C" fn rs_println(a: *const u8) {
-    rs_print(a);
 }

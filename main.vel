@@ -1,3 +1,1 @@
-ext "@/io"
-
-rs_println("e")
+bind x as inferred = 0

@@ -4,3 +4,6 @@ out.imvel
 out
 velvet_tmp
 .vscode
+docbuilder/node_modules
+docbuilder/bun.lock
+runmain.sh

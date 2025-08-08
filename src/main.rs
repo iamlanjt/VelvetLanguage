@@ -9,6 +9,7 @@ use crate::{
     tokenizer::tokenizer::tokenize,
 };
 use std::fs::{self};
+use std::path::Path;
 use std::process::Command;
 use std::time::Instant;
 use std::{env, process};
@@ -150,6 +151,7 @@ fn main() {
     for node in &ast.nodes {
         checker.check_expr(node, None, tc_verbose, 0);
     }
+    checker.check_all_type_resolutions();
     // println!("{:#?}", checker.type_table);
     if !checker.errors.is_empty() {
         println!("Typechecking failed");
@@ -270,18 +272,17 @@ fn main() {
         }
 
         let mut clang_cmd = Command::new("clang");
+        clang_cmd.args(["-Wno-override-module", "-no-pie"]);
         clang_cmd.arg(&optimized_path);
         for archive in &external_archive_paths {
-            clang_cmd.arg(archive);
+            clang_cmd.arg(&format!("-Wl,-force_load,{}", archive));
         }
-
         clang_cmd.args(["-lc++", "-lc", "-lSystem"]);
-
         clang_cmd.arg("-o").arg("out");
 
         let output = clang_cmd
-    .output()
-    .expect("Failed to link your Velvet program! You may have to manually link the object file under `./velvet_tmp`.");
+            .output()
+            .expect("Failed to link your Velvet program! You may have to manually link the object file under `./velvet_tmp`.");
 
         let finish_linking = finished_optimizer_t.elapsed();
 
@@ -290,8 +291,11 @@ fn main() {
             std::process::exit(1);
         }
 
+        /*
         fs::remove_dir_all("./velvet_tmp/std")
             .expect("Failed to remove temporary standard lib Velvet dir at `./velvet_tmp/std`.");
+        println!("rmdir -> ./velvet_tmp/std");
+        */
         // fs::remove_dir_all("./velvet_tmp").expect("Failed to remove temporary Velvet directory. You may have to manually remove it at `./velvet_tmp`.");
 
         let final_time = start.elapsed();

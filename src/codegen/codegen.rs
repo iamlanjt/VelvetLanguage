@@ -53,6 +53,10 @@ struct VarUsage {
 
 type ScopeUsage = HashMap<String, VarUsage>;
 
+enum MangleType {
+    Func,
+}
+
 pub struct IRGenerator<'ctx> {
     pub context: &'ctx Context,
     pub builder: Builder<'ctx>,
@@ -66,6 +70,7 @@ pub struct IRGenerator<'ctx> {
     externals: Vec<String>,
     external_names_individual: Vec<String>,
     pub external_files: Vec<String>,
+    ext_name_mirrors: HashMap<String, String>,
 
     // call stack stuff
     call_stack: Option<GlobalValue<'ctx>>,
@@ -132,6 +137,7 @@ impl<'ctx> IRGenerator<'ctx> {
             externals: externals.clone(),
             external_names_individual: Vec::new(),
             external_files: Vec::new(),
+            ext_name_mirrors: HashMap::new(),
         }
     }
 
@@ -352,8 +358,8 @@ impl<'ctx> IRGenerator<'ctx> {
         if let Some(func) = self.module.get_function(&external) {
             func
         } else {
-            let i8ptr_type = self.context.ptr_type(AddressSpace::default());
-            let fn_type = self.context.i64_type().fn_type(&[i8ptr_type.into()], false);
+            let i8ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+            let fn_type = self.context.i32_type().fn_type(&[i8ptr_type.into()], false);
             self.checker.scopes.last_mut().unwrap().insert(
                 external.clone(),
                 T::Function {
@@ -515,30 +521,38 @@ impl<'ctx> IRGenerator<'ctx> {
                 .unwrap_or_else(|_| panic!("Failed to include ext {}", ext));
             match bound {
                 SubmoduleFetchResult::Valid { meta, entry } => {
+                    self.external_files.push(meta.name.clone());
+                    // compile Rust file to staticlib (.a)
+                    let output_archive_path = format!("velvet_tmp/std/lib{}.a", meta.name);
+                    let status = Command::new("rustc")
+                        .arg("-Awarnings")
+                        .arg("--crate-type=staticlib")
+                        .arg("-C")
+                        .arg("link-dead-code")
+                        .arg("-C")
+                        .arg("codegen-units=1")
+                        .arg(entry.to_str().unwrap())
+                        .arg("-o")
+                        .arg(&output_archive_path)
+                        .status()
+                        .expect("Failed to compile Rust external to staticlib");
+
+                    if !status.success() {
+                        panic!("rustc failed to compile external function: {}", meta.name);
+                    }
+
+                    println!("write -> {}", output_archive_path);
                     for sub_module in &meta.submod {
-                        self.external_names_individual.push(sub_module.name.clone());
-                        self.external_files.push(sub_module.name.clone());
-                        self.get_or_declare_external(sub_module.name.clone());
-
-                        // compile Rust file to staticlib (.a)
-                        let output_archive_path =
-                            format!("velvet_tmp/std/lib{}.a", sub_module.name);
-                        let status = Command::new("rustc")
-                            .arg("--crate-type=staticlib")
-                            .arg(entry.to_str().unwrap())
-                            .arg("-o")
-                            .arg(&output_archive_path)
-                            .status()
-                            .expect("Failed to compile Rust external to staticlib");
-
-                        if !status.success() {
-                            panic!(
-                                "rustc failed to compile external function: {}",
-                                sub_module.name
+                        let mut name_to_use = sub_module.name.clone();
+                        if sub_module.name_mirror.is_some() {
+                            name_to_use = sub_module.name_mirror.clone().unwrap();
+                            self.ext_name_mirrors.insert(
+                                sub_module.name.clone(),
+                                sub_module.name_mirror.clone().unwrap(),
                             );
                         }
-
-                        println!("write -> {}", output_archive_path);
+                        self.external_names_individual.push(sub_module.name.clone());
+                        self.get_or_declare_external(name_to_use.clone());
                     }
                 }
                 SubmoduleFetchResult::Invalid => {
@@ -1139,8 +1153,12 @@ impl<'ctx> IRGenerator<'ctx> {
                         .build_store(csp.as_pointer_value(), incremented)
                         .unwrap();
                 }
-
-                let function = self.module.get_function(&function_name);
+                let mut fn_name = &function_name;
+                let mirror_name = self.ext_name_mirrors.get(fn_name);
+                if mirror_name.is_some() {
+                    fn_name = mirror_name.unwrap();
+                }
+                let function = self.module.get_function(fn_name);
 
                 if let Some(func) = function {
                     let mut has_valid_return = false;
@@ -1210,19 +1228,16 @@ impl<'ctx> IRGenerator<'ctx> {
 
                     call_site.try_as_basic_value().left()
                 } else {
-                    let m: Option<i32> = match function_name.as_str() {
-                        _ => None,
-                    };
+                    let m: Option<i32> = None;
                     if m.is_none() {
-                        // Try to call from externals
-                        println!("{:#?}", self.external_names_individual);
+                        // try to call from externals
                         if self
                             .external_names_individual
                             .iter()
-                            .any(|p| *p.to_lowercase() == function_name)
+                            .any(|p| *p.to_lowercase() == fn_name.clone())
                         {
-                            // Register external call in LLVM IR
-                            let this_fn = self.get_or_declare_external(function_name.clone());
+                            // reg external call in LLVM
+                            let this_fn = self.get_or_declare_external(fn_name.clone());
                             let args: Vec<_> = cexpr
                                 .args
                                 .iter()

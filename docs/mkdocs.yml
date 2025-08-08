@@ -1,0 +1,23 @@
+site_name: Velvet Language Documentation
+theme:
+  name: material
+  palette:
+    primary: deep purple
+    scheme: slate
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+nav:
+  - Index: index.md
+  - Getting Started:
+      - The Basics:
+          - one: Getting Started/The Basics/one.md
+  - Standard Library:
+      - io:
+          - io: Standard Library/io/index.md
+          - print: Standard Library/io/print.md
+          - write: Standard Library/io/write.md
+          - write_nf: Standard Library/io/write_nf.md
+      - math:
+          - math: Standard Library/math/index.md
+          - pow: Standard Library/math/pow.md
